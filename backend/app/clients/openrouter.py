@@ -1,0 +1,673 @@
+import base64
+import copy
+import json
+import logging
+import re
+from typing import Any, Protocol, TypeVar
+
+import httpx
+from pydantic import BaseModel, ValidationError
+
+from app.config import Settings
+from app.schemas.contracts import (
+    ExplainSelectionRequest,
+    ExplainSelectionResult,
+    GlossaryEnrichmentResult,
+    PronunciationHint,
+    TextAnalysisResult,
+    VisionExtractionResult,
+)
+from app.services.language_options import input_language_name, output_language_name
+from app.services.prompts import build_glossary_enrichment_messages, build_text_analysis_messages
+
+StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
+logger = logging.getLogger(__name__)
+MAX_STRUCTURED_OUTPUT_ATTEMPTS = 3
+ERROR_PREVIEW_LIMIT = 600
+
+
+class StudyAnalysisClient(Protocol):
+    async def extract_text_from_image(
+        self,
+        image_bytes: bytes,
+        media_type: str,
+        input_language: str = "auto",
+    ) -> VisionExtractionResult: ...
+
+    async def analyze_text_for_study(
+        self,
+        document_text: str,
+        pronunciation_hints: list[PronunciationHint],
+        input_language: str = "auto",
+        output_language: str = "en",
+    ) -> TextAnalysisResult: ...
+
+    async def enrich_glossary_terms(
+        self,
+        document_text: str,
+        glossary_terms: list[str],
+        output_language: str = "en",
+    ) -> GlossaryEnrichmentResult: ...
+
+    async def explain_selection(self, payload: ExplainSelectionRequest) -> ExplainSelectionResult: ...
+
+
+class OpenRouterClientError(Exception):
+    """Base exception for OpenRouter integration failures."""
+
+
+class OpenRouterUpstreamError(OpenRouterClientError):
+    """Raised when the upstream request fails."""
+
+
+class OpenRouterResponseError(OpenRouterClientError):
+    """Raised when the upstream response cannot be validated."""
+
+
+class OpenRouterClient:
+    def __init__(self, settings: Settings, http_client: httpx.AsyncClient | None = None) -> None:
+        self._settings = settings
+        self._owns_client = http_client is None
+        self._client = http_client or httpx.AsyncClient(
+            base_url=settings.openrouter_base_url,
+            timeout=settings.request_timeout_seconds,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Content-Type": "application/json",
+            },
+        )
+
+    async def close(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+    async def extract_text_from_image(
+        self,
+        image_bytes: bytes,
+        media_type: str,
+        input_language: str = "auto",
+    ) -> VisionExtractionResult:
+        image_data_url = self._to_data_url(image_bytes=image_bytes, media_type=media_type)
+        source_language_name = input_language_name(input_language)
+        prompt = (
+            "Extract the document text from this image in reading order.\n"
+            "Set language to zh-Hans or zh-Hant when Chinese is present.\n"
+            f"The preferred source language is {source_language_name}; use that as a hint when OCR is ambiguous.\n"
+            "Return exactly one JSON object and nothing else.\n"
+            "Do not include markdown fences, reasoning, commentary, or extra keys.\n"
+            "Use empty arrays instead of null.\n"
+            "pronunciationHints must stay phrase-level.\n"
+            "Only include a pronunciation hint when a phrase has a context-sensitive reading, such as a polyphonic word, "
+            "name, or proper noun that would be easy to misread without context.\n"
+            "Each hinted phrase must appear exactly in documentText.\n"
+            "Do not generate pinyin for every token.\n"
+            "If you are not confident, return an empty pronunciationHints array."
+        )
+        payload = {
+            "model": self._settings.openrouter_vision_model,
+            "stream": False,
+            "temperature": 0,
+            "plugins": [{"id": "response-healing"}],
+            "response_format": self._json_schema_payload(
+                name="vision_extraction",
+                schema=VisionExtractionResult.model_json_schema(),
+            ),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": image_data_url}},
+                    ],
+                }
+            ],
+        }
+        result = await self._request_structured_output(
+            payload=payload,
+            model_type=VisionExtractionResult,
+            stage_name="vision extraction",
+            model_name=self._settings.openrouter_vision_model,
+        )
+        return result.model_copy(
+            update={
+                "pronunciation_hints": self._filter_hints(
+                    hints=result.pronunciation_hints,
+                    source_text=result.document_text,
+                )
+            }
+        )
+
+    async def analyze_text_for_study(
+        self,
+        document_text: str,
+        pronunciation_hints: list[PronunciationHint],
+        input_language: str = "auto",
+        output_language: str = "en",
+    ) -> TextAnalysisResult:
+        payload = {
+            "model": self._settings.openrouter_text_model,
+            "stream": False,
+            "temperature": 0,
+            "plugins": [{"id": "response-healing"}],
+            "response_format": self._json_schema_payload(
+                name="text_analysis",
+                schema=TextAnalysisResult.model_json_schema(),
+            ),
+            "messages": build_text_analysis_messages(
+                document_text=document_text,
+                pronunciation_hints=pronunciation_hints,
+                input_language_name=input_language_name(input_language),
+                output_language_name=output_language_name(output_language),
+            ),
+        }
+        result = await self._request_structured_output(
+            payload=payload,
+            model_type=TextAnalysisResult,
+            stage_name="text analysis",
+            model_name=self._settings.openrouter_text_model,
+        )
+        return result.model_copy(
+            update={
+                "pronunciation_hints": self._filter_hints(
+                    hints=result.pronunciation_hints,
+                    source_text=document_text,
+                )
+            }
+        )
+
+    async def explain_selection(self, payload: ExplainSelectionRequest) -> ExplainSelectionResult:
+        prompt = (
+            "Explain the selected Chinese text for a learner.\n"
+            "Return exactly one JSON object and nothing else.\n"
+            "Do not include markdown fences, reasoning, or extra keys.\n"
+            "Use empty arrays instead of null.\n"
+            "Return concise meaning, learner-friendly notes, and one to three example sentences.\n"
+            "Only include pronunciationHints when the selected text has a context-sensitive reading.\n"
+            "Any pronunciation hint phrase must match the selected text exactly.\n"
+            "Do not return standalone pinyin outside pronunciationHints."
+        )
+        user_message = {
+            "text": payload.text,
+            "scope": payload.scope,
+            "sentenceContext": payload.sentence_context,
+        }
+        request_payload = {
+            "model": self._settings.openrouter_text_model,
+            "stream": False,
+            "temperature": 0,
+            "plugins": [{"id": "response-healing"}],
+            "response_format": self._json_schema_payload(
+                name="selection_explanation",
+                schema=ExplainSelectionResult.model_json_schema(),
+            ),
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": json.dumps(user_message, ensure_ascii=False)},
+            ],
+        }
+        result = await self._request_structured_output(
+            payload=request_payload,
+            model_type=ExplainSelectionResult,
+            stage_name="selection explanation",
+            model_name=self._settings.openrouter_text_model,
+        )
+        return result.model_copy(
+            update={
+                "pronunciation_hints": self._filter_hints(
+                    hints=result.pronunciation_hints,
+                    source_text=payload.text,
+                    exact_phrase=payload.text,
+                )
+            }
+        )
+
+    async def enrich_glossary_terms(
+        self,
+        document_text: str,
+        glossary_terms: list[str],
+        output_language: str = "en",
+    ) -> GlossaryEnrichmentResult:
+        normalized_terms = [term.strip() for term in glossary_terms if term.strip()]
+        if not normalized_terms:
+            return GlossaryEnrichmentResult(entries=[])
+
+        payload = {
+            "model": self._settings.openrouter_text_model,
+            "stream": False,
+            "temperature": 0,
+            "plugins": [{"id": "response-healing"}],
+            "response_format": self._json_schema_payload(
+                name="glossary_enrichment",
+                schema=GlossaryEnrichmentResult.model_json_schema(),
+            ),
+            "messages": build_glossary_enrichment_messages(
+                document_text=document_text,
+                glossary_terms=normalized_terms,
+                output_language_name=output_language_name(output_language),
+            ),
+        }
+        return await self._request_structured_output(
+            payload=payload,
+            model_type=GlossaryEnrichmentResult,
+            stage_name="glossary enrichment",
+            model_name=self._settings.openrouter_text_model,
+        )
+
+    async def _post_chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            response = await self._client.post("/chat/completions", json=payload)
+            response.raise_for_status()
+        except httpx.TimeoutException as exc:
+            raise OpenRouterUpstreamError("Timed out while waiting for OpenRouter.") from exc
+        except httpx.HTTPStatusError as exc:
+            raise OpenRouterUpstreamError("OpenRouter returned an error response.") from exc
+        except httpx.RequestError as exc:
+            raise OpenRouterUpstreamError("Could not reach OpenRouter.") from exc
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise OpenRouterResponseError("OpenRouter returned a non-JSON response.") from exc
+
+    async def _request_structured_output(
+        self,
+        *,
+        payload: dict[str, Any],
+        model_type: type[StructuredModelT],
+        stage_name: str,
+        model_name: str,
+    ) -> StructuredModelT:
+        last_error: OpenRouterResponseError | None = None
+        working_payload = copy.deepcopy(payload)
+
+        for attempt in range(1, MAX_STRUCTURED_OUTPUT_ATTEMPTS + 1):
+            response = await self._post_chat_completion(working_payload)
+            try:
+                return self._parse_structured_content(response, model_type)
+            except OpenRouterResponseError as exc:
+                last_error = exc
+                logger.warning(
+                    "OpenRouter %s returned invalid structured output on attempt %s for model=%s: %s",
+                    stage_name,
+                    attempt,
+                    model_name,
+                    exc,
+                )
+                if attempt == MAX_STRUCTURED_OUTPUT_ATTEMPTS:
+                    break
+                working_payload = self._build_retry_payload(
+                    payload=working_payload,
+                    model_type=model_type,
+                    stage_name=stage_name,
+                    error=exc,
+                    attempt=attempt + 1,
+                )
+
+        assert last_error is not None
+        raise last_error
+
+    @staticmethod
+    def _build_retry_payload(
+        *,
+        payload: dict[str, Any],
+        model_type: type[StructuredModelT],
+        stage_name: str,
+        error: OpenRouterResponseError,
+        attempt: int,
+    ) -> dict[str, Any]:
+        retry_payload = copy.deepcopy(payload)
+        messages = list(retry_payload.get("messages", []))
+        schema_keys = ", ".join(model_type.model_json_schema().get("properties", {}).keys())
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    f"Retry attempt {attempt} for {stage_name}. "
+                    "Your previous reply failed validation. "
+                    "Return exactly one JSON object matching the required schema. "
+                    "Do not include markdown, explanations, or reasoning. "
+                    f"Top-level keys must stay within: {schema_keys}. "
+                    "Use empty arrays instead of null. "
+                    "If uncertain, keep values minimal but schema-valid. "
+                    f"Validation error: {str(error)[:ERROR_PREVIEW_LIMIT]}"
+                ),
+            }
+        )
+        retry_payload["messages"] = messages
+        return retry_payload
+
+    @staticmethod
+    def _json_schema_payload(name: str, schema: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": name,
+                "strict": True,
+                "schema": schema,
+            },
+        }
+
+    @staticmethod
+    def _parse_structured_content(
+        response_payload: dict[str, Any],
+        model_type: type[StructuredModelT],
+    ) -> StructuredModelT:
+        try:
+            message = response_payload["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise OpenRouterResponseError("OpenRouter response did not include a chat message.") from exc
+
+        data = message.get("parsed")
+        if data is None:
+            content = message.get("content", "")
+            if isinstance(content, list):
+                text_blocks = [block.get("text", "") for block in content if isinstance(block, dict)]
+                content = "".join(text_blocks)
+
+            if isinstance(content, str):
+                normalized_content = OpenRouterClient._extract_json_candidate(content)
+                try:
+                    data = json.loads(normalized_content)
+                except json.JSONDecodeError as exc:
+                    raise OpenRouterResponseError(
+                        "OpenRouter response did not contain valid JSON. "
+                        f"Preview: {normalized_content[:500]!r}"
+                    ) from exc
+            else:
+                data = content
+
+        data = OpenRouterClient._coerce_structured_data(data, model_type)
+
+        try:
+            return model_type.model_validate(data)
+        except ValidationError as exc:
+            raise OpenRouterResponseError(
+                "OpenRouter JSON did not match the expected schema. "
+                f"Errors: {exc.errors(include_url=False)}. Preview: {str(data)[:500]!r}"
+            ) from exc
+
+    @staticmethod
+    def _coerce_structured_data(
+        data: Any,
+        model_type: type[StructuredModelT],
+    ) -> Any:
+        if model_type is VisionExtractionResult:
+            return OpenRouterClient._coerce_vision_extraction_data(data)
+        if model_type is TextAnalysisResult:
+            return OpenRouterClient._coerce_text_analysis_data(data)
+        if model_type is GlossaryEnrichmentResult:
+            return OpenRouterClient._coerce_glossary_enrichment_data(data)
+        if model_type is ExplainSelectionResult:
+            return OpenRouterClient._coerce_explain_selection_data(data)
+        return data
+
+    @staticmethod
+    def _coerce_vision_extraction_data(data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        document_text = OpenRouterClient._first_string(
+            data.get("documentText"),
+            data.get("document_text"),
+        )
+        reading_lines = OpenRouterClient._coerce_string_list(
+            data.get("readingLines"),
+            fallback=document_text.splitlines() if document_text else [],
+        )
+
+        return {
+            "documentText": document_text,
+            "language": OpenRouterClient._first_string(data.get("language")) or OpenRouterClient._infer_language(document_text),
+            "readingLines": reading_lines,
+            "pronunciationHints": OpenRouterClient._coerce_pronunciation_hints(data.get("pronunciationHints")),
+            "warnings": OpenRouterClient._coerce_string_list(data.get("warnings")),
+        }
+
+    @staticmethod
+    def _coerce_text_analysis_data(data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        sentences: list[dict[str, Any]] = []
+        for raw_sentence in OpenRouterClient._coerce_list(data.get("sentences")):
+            if not isinstance(raw_sentence, dict):
+                continue
+            hanzi = OpenRouterClient._first_string(raw_sentence.get("hanzi"), raw_sentence.get("text"))
+            if not hanzi:
+                continue
+            translation = OpenRouterClient._first_string(raw_sentence.get("translation"))
+            tokens = OpenRouterClient._coerce_text_tokens(raw_sentence.get("tokens"), fallback_text=hanzi)
+            sentences.append(
+                {
+                    "hanzi": hanzi,
+                    "translation": translation or None,
+                    "tokens": tokens,
+                }
+            )
+
+        glossary: list[dict[str, Any]] = []
+        for raw_glossary in OpenRouterClient._coerce_list(data.get("glossary")):
+            if isinstance(raw_glossary, str):
+                text = raw_glossary.strip()
+                if text:
+                    glossary.append({"text": text})
+                continue
+            if not isinstance(raw_glossary, dict):
+                continue
+            text = OpenRouterClient._first_string(raw_glossary.get("text"), raw_glossary.get("hanzi"))
+            if not text:
+                continue
+            glossary.append(
+                {
+                    "text": text,
+                    "meaning": OpenRouterClient._first_string(raw_glossary.get("meaning")) or None,
+                }
+            )
+
+        return {
+            "sentences": sentences,
+            "glossary": glossary,
+            "pronunciationHints": OpenRouterClient._coerce_pronunciation_hints(data.get("pronunciationHints")),
+        }
+
+    @staticmethod
+    def _coerce_glossary_enrichment_data(data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        entries: list[dict[str, Any]] = []
+        for raw_entry in OpenRouterClient._coerce_list(data.get("entries")):
+            if not isinstance(raw_entry, dict):
+                continue
+            text = OpenRouterClient._first_string(raw_entry.get("text"), raw_entry.get("hanzi"))
+            if not text:
+                continue
+            entries.append(
+                {
+                    "text": text,
+                    "literalMeaning": OpenRouterClient._first_string(
+                        raw_entry.get("literalMeaning"),
+                        raw_entry.get("meaning"),
+                    )
+                    or None,
+                    "exampleSentence": OpenRouterClient._first_string(raw_entry.get("exampleSentence")) or None,
+                }
+            )
+
+        return {"entries": entries}
+
+    @staticmethod
+    def _coerce_explain_selection_data(data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        return {
+            "text": OpenRouterClient._first_string(data.get("text")) or None,
+            "meaning": OpenRouterClient._first_string(data.get("meaning")) or None,
+            "notes": OpenRouterClient._first_string(data.get("notes")) or None,
+            "examples": OpenRouterClient._coerce_string_list(data.get("examples")),
+            "pronunciationHints": OpenRouterClient._coerce_pronunciation_hints(data.get("pronunciationHints")),
+        }
+
+    @staticmethod
+    def _coerce_text_tokens(raw_tokens: Any, *, fallback_text: str) -> list[dict[str, Any]]:
+        tokens: list[dict[str, Any]] = []
+        for raw_token in OpenRouterClient._coerce_list(raw_tokens):
+            if isinstance(raw_token, str):
+                text = raw_token.strip()
+                if text:
+                    tokens.append({"text": text, "kind": "word"})
+                continue
+            if not isinstance(raw_token, dict):
+                continue
+            text = OpenRouterClient._first_string(raw_token.get("text"), raw_token.get("hanzi"))
+            if not text:
+                continue
+            token_kind = OpenRouterClient._first_string(raw_token.get("kind")).lower() or "word"
+            if token_kind not in {"word", "phrase", "punctuation", "other"}:
+                token_kind = "other"
+            tokens.append(
+                {
+                    "text": text,
+                    "kind": token_kind,
+                    "meaning": OpenRouterClient._first_string(raw_token.get("meaning")) or None,
+                }
+            )
+
+        if tokens:
+            return tokens
+        if fallback_text.strip():
+            return [{"text": fallback_text.strip(), "kind": "other"}]
+        return []
+
+    @staticmethod
+    def _coerce_pronunciation_hints(raw_hints: Any) -> list[dict[str, Any]]:
+        hints: list[dict[str, Any]] = []
+        for raw_hint in OpenRouterClient._coerce_list(raw_hints):
+            if not isinstance(raw_hint, dict):
+                continue
+            phrase = OpenRouterClient._first_string(raw_hint.get("phrase"))
+            preferred_pinyin = OpenRouterClient._first_string(
+                raw_hint.get("preferredPinyin"),
+                raw_hint.get("preferred_pinyin"),
+            )
+            if not phrase or not preferred_pinyin:
+                continue
+            hints.append(
+                {
+                    "phrase": phrase,
+                    "preferredPinyin": preferred_pinyin,
+                    "toneNumberPinyin": OpenRouterClient._first_string(
+                        raw_hint.get("toneNumberPinyin"),
+                        raw_hint.get("tone_number_pinyin"),
+                    ) or None,
+                    "reason": OpenRouterClient._first_string(raw_hint.get("reason")) or None,
+                    "confidence": OpenRouterClient._coerce_confidence(raw_hint.get("confidence")),
+                }
+            )
+        return hints
+
+    @staticmethod
+    def _coerce_confidence(raw_value: Any) -> float:
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            return 0.0
+        return min(1.0, max(0.0, value))
+
+    @staticmethod
+    def _coerce_string_list(raw_value: Any, fallback: list[str] | None = None) -> list[str]:
+        if isinstance(raw_value, list):
+            return [str(item).strip() for item in raw_value if str(item).strip()]
+        if isinstance(raw_value, str):
+            normalized = raw_value.strip()
+            if normalized:
+                return [normalized]
+        return list(fallback or [])
+
+    @staticmethod
+    def _coerce_list(raw_value: Any) -> list[Any]:
+        return raw_value if isinstance(raw_value, list) else []
+
+    @staticmethod
+    def _first_string(*values: Any) -> str:
+        for value in values:
+            if isinstance(value, str):
+                normalized = value.strip()
+                if normalized:
+                    return normalized
+        return ""
+
+    @staticmethod
+    def _infer_language(document_text: str) -> str:
+        if re.search(r"[\u4e00-\u9fff]", document_text):
+            return "zh-Hans"
+        if re.search(r"[\u3040-\u30ff]", document_text):
+            return "ja"
+        if re.search(r"[\uac00-\ud7af]", document_text):
+            return "ko"
+        if re.search(r"[A-Za-z]", document_text):
+            return "en"
+        return "und"
+
+    @staticmethod
+    def _filter_hints(
+        hints: list[PronunciationHint],
+        source_text: str,
+        exact_phrase: str | None = None,
+    ) -> list[PronunciationHint]:
+        if not source_text:
+            return []
+
+        normalized_exact_phrase = exact_phrase.strip() if exact_phrase else None
+        filtered: dict[str, PronunciationHint] = {}
+
+        for hint in hints:
+            if not hint.applies_to(source_text):
+                continue
+            if normalized_exact_phrase and hint.phrase != normalized_exact_phrase:
+                continue
+
+            current = filtered.get(hint.phrase)
+            if current is None or hint.confidence >= current.confidence:
+                filtered[hint.phrase] = hint
+
+        return list(filtered.values())
+
+    @staticmethod
+    def _extract_json_candidate(content: str) -> str:
+        normalized = OpenRouterClient._strip_json_code_fence(content.strip())
+        if not normalized:
+            return normalized
+
+        decoder = json.JSONDecoder()
+        for start_index, character in enumerate(normalized):
+            if character not in "[{":
+                continue
+            try:
+                parsed, end_index = decoder.raw_decode(normalized[start_index:])
+                reparsed = json.dumps(parsed, ensure_ascii=False)
+                trailing = normalized[start_index + end_index :].strip()
+                if trailing:
+                    logger.debug("Ignoring trailing non-JSON content after structured response: %r", trailing[:200])
+                return reparsed
+            except json.JSONDecodeError:
+                continue
+
+        return normalized
+
+    @staticmethod
+    def _strip_json_code_fence(content: str) -> str:
+        if not content.startswith("```"):
+            return content
+
+        lines = content.splitlines()
+        if len(lines) >= 2 and lines[-1].strip() == "```":
+            return "\n".join(lines[1:-1]).strip()
+        return content
+
+    @staticmethod
+    def _to_data_url(image_bytes: bytes, media_type: str) -> str:
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        return f"data:{media_type};base64,{encoded}"

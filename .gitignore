@@ -1,0 +1,21 @@
+# Android
+android-app/.gradle/
+android-app/local.properties
+android-app/**/build/
+
+# Python
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/.venv/
+backend/.pytest_cache/
+backend/__pycache__/
+backend/**/*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
