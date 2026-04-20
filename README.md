@@ -57,6 +57,25 @@ http://localhost:8000/health
 - Backend: OCR request handling, OpenRouter calls, pinyin enrichment, and structured responses
 - `.env` file: backend-only secrets and model IDs
 
+### 5. Deploy the backend online
+
+If you want the backend to stay online without running it on your laptop, Railway is a simple option for this FastAPI app.
+
+1. Create a Railway project and connect this GitHub repo.
+2. Set the service root directory to `backend/`.
+3. Add these variables in Railway:
+   - `OPENROUTER_API_KEY`
+   - `OPENROUTER_VISION_MODEL`
+   - `OPENROUTER_TEXT_MODEL`
+   - optional: `OPENROUTER_BASE_URL`, `REQUEST_TIMEOUT_SECONDS`, `MAX_IMAGE_MB`, `ALLOWED_IMAGE_MEDIA_TYPES`
+4. Use this start command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+5. Generate a public domain from the Railway service settings.
+
 ## Stack
 
 - Android app: Kotlin, Jetpack Compose, Navigation Compose, Coil, DataStore

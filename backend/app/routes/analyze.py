@@ -31,10 +31,10 @@ def get_analysis_client(request: Request) -> OpenRouterClient:
 @router.post("/analyze-image", response_model=AnalyzeImageResponse)
 async def analyze_image(
     image: Annotated[UploadFile, File(...)],
-    input_language: Annotated[str, Form()] = "auto",
-    output_language: Annotated[str, Form()] = "en",
     settings: Annotated[Settings, Depends(get_app_settings)],
     client: Annotated[OpenRouterClient, Depends(get_analysis_client)],
+    input_language: Annotated[str, Form()] = "auto",
+    output_language: Annotated[str, Form()] = "en",
 ) -> AnalyzeImageResponse:
     normalized_input_language = normalize_input_language(input_language)
     normalized_output_language = normalize_output_language(output_language)

@@ -19,3 +19,6 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+# Planning / scratch docs
+PARALLEL_BUILD_PLAN.md
