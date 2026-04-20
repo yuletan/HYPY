@@ -1,0 +1,12 @@
+.git
+.idea
+.vscode
+android-app
+docs
+backend/.venv
+backend/.pytest_cache
+backend/.env
+backend/__pycache__
+backend/**/*.pyc
+image.png
+PARALLEL_BUILD_PLAN.md
