@@ -1,6 +1,7 @@
 package com.hanyupinyin.app
 
 import android.content.Context
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -9,6 +10,7 @@ import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Style
 import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +34,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.hanyupinyin.app.data.SavedStudyRepository
 import com.hanyupinyin.app.navigation.AppDestination
 import com.hanyupinyin.app.navigation.AppNavGraph
 import com.hanyupinyin.app.data.AppSettings
@@ -39,6 +42,7 @@ import com.hanyupinyin.app.data.AppSettingsRepository
 import com.hanyupinyin.app.theme.HanYuPinYinTheme
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.StudyJson
+import com.hanyupinyin.feature.flashcards.FlashcardsOverlay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -50,12 +54,17 @@ fun HanYuPinYinApp() {
     val settingsRepository = remember(context) {
         AppSettingsRepository(context.applicationContext as Context)
     }
+    val savedStudyRepository = remember(context) {
+        SavedStudyRepository(context.applicationContext as Context)
+    }
     val appSettings by settingsRepository.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
+    val savedStudies by savedStudyRepository.savedStudies.collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = AppDestination.fromRoute(currentBackStackEntry?.destination?.route)
     var latestResponseJson by rememberSaveable { mutableStateOf<String?>(null) }
+    var flashcardsVisible by rememberSaveable { mutableStateOf(false) }
     val latestResponse = remember(latestResponseJson) {
         latestResponseJson?.let { serialized ->
             runCatching { StudyJson.decodeFromString<AnalyzeImageResponse>(serialized) }.getOrNull()
@@ -63,90 +72,110 @@ fun HanYuPinYinApp() {
     }
 
     HanYuPinYinTheme(darkTheme = appSettings.useDarkTheme) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(currentDestination.title) },
-                    navigationIcon = {
-                        if (!currentDestination.topLevel) {
-                            IconButton(onClick = { navController.popBackStack() }) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = { Text(currentDestination.title) },
+                        navigationIcon = {
+                            if (!currentDestination.topLevel) {
+                                IconButton(onClick = { navController.popBackStack() }) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Go back",
+                                    )
+                                }
+                            }
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        settingsRepository.update(
+                                            appSettings.copy(useDarkTheme = !appSettings.useDarkTheme),
+                                        )
+                                    }
+                                },
+                            ) {
                                 Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Go back",
+                                    imageVector = if (appSettings.useDarkTheme) {
+                                        Icons.Outlined.LightMode
+                                    } else {
+                                        Icons.Outlined.DarkMode
+                                    },
+                                    contentDescription = if (appSettings.useDarkTheme) {
+                                        "Switch to light mode"
+                                    } else {
+                                        "Switch to dark mode"
+                                    },
+                                )
+                            }
+                        },
+                    )
+                },
+                bottomBar = {
+                    if (currentDestination.topLevel) {
+                        NavigationBar {
+                            AppDestination.topLevelDestinations.forEach { destination ->
+                                val isFlashcards = destination == AppDestination.Flashcards
+                                NavigationBarItem(
+                                    selected = if (isFlashcards) {
+                                        flashcardsVisible
+                                    } else {
+                                        currentDestination.route == destination.route
+                                    },
+                                    onClick = {
+                                        if (isFlashcards) {
+                                            flashcardsVisible = true
+                                        } else {
+                                            navController.navigate(destination.route) {
+                                                launchSingleTop = true
+                                                restoreState = true
+                                                popUpTo(navController.graph.findStartDestination().id) {
+                                                    saveState = true
+                                                }
+                                            }
+                                        }
+                                    },
+                                    icon = {
+                                        val icon = when (destination) {
+                                            AppDestination.Upload -> Icons.Outlined.UploadFile
+                                            AppDestination.Saved -> Icons.Outlined.Bookmarks
+                                            AppDestination.Flashcards -> Icons.Outlined.Style
+                                            AppDestination.Settings -> Icons.Outlined.Settings
+                                            AppDestination.Reader -> Icons.Outlined.UploadFile
+                                        }
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = destination.title,
+                                        )
+                                    },
+                                    label = { Text(destination.title) },
                                 )
                             }
                         }
-                    },
-                    actions = {
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    settingsRepository.update(
-                                        appSettings.copy(useDarkTheme = !appSettings.useDarkTheme),
-                                    )
-                                }
-                            },
-                        ) {
-                            Icon(
-                                imageVector = if (appSettings.useDarkTheme) {
-                                    Icons.Outlined.LightMode
-                                } else {
-                                    Icons.Outlined.DarkMode
-                                },
-                                contentDescription = if (appSettings.useDarkTheme) {
-                                    "Switch to light mode"
-                                } else {
-                                    "Switch to dark mode"
-                                },
-                            )
-                        }
-                    },
-                )
-            },
-            bottomBar = {
-                if (currentDestination.topLevel) {
-                    NavigationBar {
-                        AppDestination.topLevelDestinations.forEach { destination ->
-                            NavigationBarItem(
-                                selected = currentDestination.route == destination.route,
-                                onClick = {
-                                    navController.navigate(destination.route) {
-                                        launchSingleTop = true
-                                        restoreState = true
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
-                                        }
-                                    }
-                                },
-                                icon = {
-                                    val icon = when (destination) {
-                                        AppDestination.Upload -> Icons.Outlined.UploadFile
-                                        AppDestination.Saved -> Icons.Outlined.Bookmarks
-                                        AppDestination.Settings -> Icons.Outlined.Settings
-                                        AppDestination.Reader -> Icons.Outlined.UploadFile
-                                    }
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = destination.title,
-                                    )
-                                },
-                                label = { Text(destination.title) },
-                            )
-                        }
                     }
+                },
+            ) { innerPadding ->
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    AppNavGraph(
+                        navController = navController,
+                        latestResponse = latestResponse,
+                        onResponseReady = { response ->
+                            latestResponseJson = StudyJson.encodeToString(response)
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                    )
                 }
-            },
-        ) { innerPadding ->
-            Surface(modifier = Modifier.fillMaxSize()) {
-                AppNavGraph(
-                    navController = navController,
-                    latestResponse = latestResponse,
-                    onResponseReady = { response ->
-                        latestResponseJson = StudyJson.encodeToString(response)
-                    },
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
+            }
+
+            if (flashcardsVisible) {
+                FlashcardsOverlay(
+                    savedStudies = savedStudies,
+                    onClose = { flashcardsVisible = false },
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }

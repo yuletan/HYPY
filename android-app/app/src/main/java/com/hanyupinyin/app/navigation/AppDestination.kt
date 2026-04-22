@@ -29,13 +29,20 @@ sealed class AppDestination(
         topLevel = true,
     )
 
+    data object Flashcards : AppDestination(
+        route = "flashcards",
+        title = "Flashcards",
+        topLevel = true,
+    )
+
     companion object {
-        val topLevelDestinations = listOf(Upload, Saved, Settings)
+        val topLevelDestinations = listOf(Upload, Saved, Flashcards, Settings)
 
         fun fromRoute(route: String?): AppDestination {
             return when (route?.substringBefore("/")) {
                 Reader.route -> Reader
                 Saved.route -> Saved
+                Flashcards.route -> Flashcards
                 Settings.route -> Settings
                 else -> Upload
             }
