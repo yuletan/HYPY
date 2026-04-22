@@ -35,7 +35,6 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.hanyupinyin.app.data.SavedStudyRepository
 import com.hanyupinyin.app.navigation.AppDestination
 import com.hanyupinyin.app.navigation.AppNavGraph
 import com.hanyupinyin.app.data.AppSettings
@@ -44,7 +43,6 @@ import com.hanyupinyin.app.data.BackendWarmupRepository
 import com.hanyupinyin.app.theme.HanYuPinYinTheme
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.StudyJson
-import com.hanyupinyin.feature.flashcards.FlashcardsOverlay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -56,18 +54,13 @@ fun HanYuPinYinApp() {
     val settingsRepository = remember(context) {
         AppSettingsRepository(context.applicationContext as Context)
     }
-    val savedStudyRepository = remember(context) {
-        SavedStudyRepository(context.applicationContext as Context)
-    }
     val backendWarmupRepository = remember { BackendWarmupRepository() }
     val appSettings by settingsRepository.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
-    val savedStudies by savedStudyRepository.savedStudies.collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = AppDestination.fromRoute(currentBackStackEntry?.destination?.route)
     var latestResponseJson by rememberSaveable { mutableStateOf<String?>(null) }
-    var flashcardsVisible by rememberSaveable { mutableStateOf(false) }
     val latestResponse = remember(latestResponseJson) {
         latestResponseJson?.let { serialized ->
             runCatching { StudyJson.decodeFromString<AnalyzeImageResponse>(serialized) }.getOrNull()
@@ -124,23 +117,14 @@ fun HanYuPinYinApp() {
                     if (currentDestination.topLevel) {
                         NavigationBar {
                             AppDestination.topLevelDestinations.forEach { destination ->
-                                val isFlashcards = destination == AppDestination.Flashcards
                                 NavigationBarItem(
-                                    selected = if (isFlashcards) {
-                                        flashcardsVisible
-                                    } else {
-                                        currentDestination.route == destination.route
-                                    },
+                                    selected = currentDestination.route == destination.route,
                                     onClick = {
-                                        if (isFlashcards) {
-                                            flashcardsVisible = true
-                                        } else {
-                                            navController.navigate(destination.route) {
-                                                launchSingleTop = true
-                                                restoreState = true
-                                                popUpTo(navController.graph.findStartDestination().id) {
-                                                    saveState = true
-                                                }
+                                        navController.navigate(destination.route) {
+                                            launchSingleTop = true
+                                            restoreState = true
+                                            popUpTo(navController.graph.findStartDestination().id) {
+                                                saveState = true
                                             }
                                         }
                                     },
@@ -176,14 +160,6 @@ fun HanYuPinYinApp() {
                             .padding(innerPadding),
                     )
                 }
-            }
-
-            if (flashcardsVisible) {
-                FlashcardsOverlay(
-                    savedStudies = savedStudies,
-                    onClose = { flashcardsVisible = false },
-                    modifier = Modifier.fillMaxSize(),
-                )
             }
         }
     }

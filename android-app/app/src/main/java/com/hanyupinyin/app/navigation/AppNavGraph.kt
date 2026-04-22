@@ -6,6 +6,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.hanyupinyin.core.model.AnalyzeImageResponse
+import com.hanyupinyin.feature.flashcards.FlashcardsRoute
 import com.hanyupinyin.feature.reader.ReaderRoute
 import com.hanyupinyin.feature.saved.SavedRoute
 import com.hanyupinyin.feature.settings.SettingsRoute
@@ -45,6 +46,9 @@ fun AppNavGraph(
                     }
                 },
             )
+        }
+        composable(AppDestination.Flashcards.route) {
+            FlashcardsRoute()
         }
         composable(AppDestination.Settings.route) {
             SettingsRoute()

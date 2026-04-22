@@ -14,8 +14,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,16 +23,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -58,10 +60,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hanyupinyin.core.model.GlossaryEntry
 import com.hanyupinyin.core.model.SavedStudyItem
 import com.hanyupinyin.core.model.StudySentence
 import com.hanyupinyin.core.model.toToneMarkedPinyin
+import com.hanyupinyin.feature.saved.SavedStudiesViewModel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -72,27 +77,75 @@ private val FlashcardSavedTimeFormatter: DateTimeFormatter = DateTimeFormatter
     .ofPattern("dd MMM, HH:mm")
     .withZone(ZoneId.systemDefault())
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FlashcardsOverlay(
+fun FlashcardsRoute(
+    viewModel: SavedStudiesViewModel = viewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var selectedStudyId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedStudy = selectedStudyId?.let { id ->
+        uiState.items.firstOrNull { item -> item.id == id }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            uiState.isLoading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+
+            uiState.items.isEmpty() -> {
+                EmptyFlashcardsPage(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(24.dp),
+                )
+            }
+
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    item {
+                        Text(
+                            text = "Choose a saved study to review.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    items(uiState.items, key = { item -> item.id }) { item ->
+                        FlashcardStudyCard(
+                            item = item,
+                            onStart = { selectedStudyId = item.id },
+                        )
+                    }
+                }
+            }
+        }
+
+        selectedStudy?.let { study ->
+            FlashcardsOverlay(
+                savedStudies = listOf(study),
+                onClose = { selectedStudyId = null },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun FlashcardsOverlay(
     savedStudies: List<SavedStudyItem>,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selectedStudyId by rememberSaveable(savedStudies.firstOrNull()?.id, savedStudies.size) {
-        mutableStateOf(savedStudies.firstOrNull()?.id)
-    }
-    val effectiveSelectedStudyId = selectedStudyId?.takeIf { selectedId ->
-        savedStudies.any { study -> study.id == selectedId }
-    }
-    val selectedStudies = remember(savedStudies, effectiveSelectedStudyId) {
-        if (effectiveSelectedStudyId == null) {
-            savedStudies
-        } else {
-            savedStudies.filter { study -> study.id == effectiveSelectedStudyId }
-        }
-    }
-    val cards = remember(selectedStudies) { selectedStudies.toFlashcardDeck() }
+    val cards = remember(savedStudies) { savedStudies.toFlashcardDeck() }
     val blockerInteractionSource = remember { MutableInteractionSource() }
 
     BackHandler(onBack = onClose)
@@ -111,25 +164,12 @@ fun FlashcardsOverlay(
             onClick = onClose,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .statusBarsPadding()
                 .padding(top = 12.dp, end = 12.dp)
                 .size(48.dp),
         ) {
             Icon(
                 imageVector = Icons.Outlined.Close,
                 contentDescription = "Close flashcards",
-            )
-        }
-
-        if (savedStudies.isNotEmpty()) {
-            FlashcardStudyChooser(
-                savedStudies = savedStudies,
-                selectedStudyId = effectiveSelectedStudyId,
-                onSelectStudy = { selectedStudyId = it },
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(start = 16.dp, top = 12.dp, end = 72.dp),
             )
         }
 
@@ -150,51 +190,82 @@ fun FlashcardsOverlay(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FlashcardStudyChooser(
-    savedStudies: List<SavedStudyItem>,
-    selectedStudyId: String?,
-    onSelectStudy: (String?) -> Unit,
+private fun EmptyFlashcardsPage(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "No saved studies yet",
+            style = MaterialTheme.typography.headlineSmall,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = "Save a reader study first, then choose it here to start flashcards.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun FlashcardStudyCard(
+    item: SavedStudyItem,
+    onStart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    ElevatedCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        tonalElevation = 6.dp,
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "Deck",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                FilterChip(
-                    selected = selectedStudyId == null,
-                    onClick = { onSelectStudy(null) },
-                    label = { Text("All saves") },
-                )
-                savedStudies.forEachIndexed { index, study ->
-                    FilterChip(
-                        selected = selectedStudyId == study.id,
-                        onClick = { onSelectStudy(study.id) },
-                        label = {
-                            Text(
-                                text = study.deckLabel(isLatest = index == 0),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "Saved ${FlashcardSavedTimeFormatter.format(Instant.ofEpochMilli(item.savedAtEpochMillis))}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Text(
+                    text = "${item.response.glossary.size} cards",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Text(
+                text = item.response.documentText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Button(
+                onClick = onStart,
+                enabled = item.response.glossary.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Start flashcards")
             }
         }
     }
@@ -600,13 +671,6 @@ private fun List<SavedStudyItem>.toFlashcardDeck(): List<FlashcardItem> {
             )
         }
     }
-}
-
-private fun SavedStudyItem.deckLabel(isLatest: Boolean): String {
-    val prefix = if (isLatest) "Latest" else FlashcardSavedTimeFormatter.format(
-        Instant.ofEpochMilli(savedAtEpochMillis),
-    )
-    return "$prefix: ${title.take(24)}"
 }
 
 private fun StudySentence.contains(entry: GlossaryEntry): Boolean {
