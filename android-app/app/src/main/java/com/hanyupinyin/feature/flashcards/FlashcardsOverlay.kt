@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -62,6 +63,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hanyupinyin.app.theme.AppCard
+import com.hanyupinyin.app.theme.AppCjkFontFamily
+import com.hanyupinyin.app.theme.AppPill
+import com.hanyupinyin.app.theme.EmptyState
+import com.hanyupinyin.app.theme.PrimaryPillButton
+import com.hanyupinyin.app.theme.SecondaryPillButton
+import com.hanyupinyin.app.theme.SectionLabel
+import com.hanyupinyin.app.theme.appColors
 import com.hanyupinyin.core.model.GlossaryEntry
 import com.hanyupinyin.core.model.SavedStudyItem
 import com.hanyupinyin.core.model.StudySentence
@@ -82,19 +91,29 @@ fun FlashcardsRoute(
     viewModel: SavedStudiesViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val colors = MaterialTheme.appColors
     var selectedStudyId by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedStudy = selectedStudyId?.let { id ->
         uiState.items.firstOrNull { item -> item.id == id }
     }
+    val reviewableItems = uiState.items.filter { item -> item.response.glossary.isNotEmpty() }
+    val totalCards = reviewableItems.sumOf { item -> item.response.glossary.size }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.bg),
+    ) {
         when {
             uiState.isLoading -> {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(
+                        color = colors.accentFg,
+                        trackColor = colors.surfaceRaised,
+                    )
                 }
             }
 
@@ -109,14 +128,16 @@ fun FlashcardsRoute(
             else -> {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
                     item {
-                        Text(
-                            text = "Choose a saved study to review.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        StudyHeader(
+                            totalCards = totalCards,
+                            deckCount = reviewableItems.size,
+                            onReviewNow = {
+                                selectedStudyId = reviewableItems.firstOrNull()?.id
+                            },
                         )
                     }
                     items(uiState.items, key = { item -> item.id }) { item ->
@@ -170,6 +191,7 @@ private fun FlashcardsOverlay(
             Icon(
                 imageVector = Icons.Outlined.Close,
                 contentDescription = "Close flashcards",
+                tint = MaterialTheme.appColors.textPrimary,
             )
         }
 
@@ -191,24 +213,61 @@ private fun FlashcardsOverlay(
 }
 
 @Composable
-private fun EmptyFlashcardsPage(modifier: Modifier = Modifier) {
+private fun StudyHeader(
+    totalCards: Int,
+    deckCount: Int,
+    onReviewNow: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.appColors
+
     Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Text(
-            text = "No saved studies yet",
+            text = "Study",
             style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
+            color = colors.textPrimary,
         )
-        Text(
-            text = "Save a reader study first, then choose it here to start flashcards.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
+        AppCard(
+            modifier = Modifier.fillMaxWidth(),
+            containerColor = colors.accentBgAlpha,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "$totalCards cards ready today",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.textPrimary,
+                    )
+                    Text(
+                        text = "Across $deckCount decks",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textSecondary,
+                    )
+                }
+                PrimaryPillButton(
+                    text = "Review now",
+                    onClick = onReviewNow,
+                    enabled = totalCards > 0,
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun EmptyFlashcardsPage(modifier: Modifier = Modifier) {
+    EmptyState(
+        title = "No saved studies yet",
+        body = "Save a reader study first, then choose it here to start flashcards.",
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -217,86 +276,128 @@ private fun FlashcardStudyCard(
     onStart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ElevatedCard(
+    val colors = MaterialTheme.appColors
+    val previewTerms = item.response.glossary.take(3)
+
+    AppCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "Saved ${FlashcardSavedTimeFormatter.format(Instant.ofEpochMilli(item.savedAtEpochMillis))}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(
-                    text = "${item.response.glossary.size} cards",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            AppPill(label = item.response.language.uppercase())
             Text(
-                text = item.response.documentText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
+                text = item.title,
+                style = MaterialTheme.typography.titleLarge.copy(fontFamily = AppCjkFontFamily),
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Button(
+            Text(
+                text = "${item.response.glossary.size} cards - Saved ${FlashcardSavedTimeFormatter.format(Instant.ofEpochMilli(item.savedAtEpochMillis))}",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textMuted,
+            )
+        }
+
+        if (previewTerms.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                previewTerms.forEach { entry ->
+                    Text(
+                        text = entry.hanzi,
+                        modifier = Modifier
+                            .background(colors.surfaceRaised, RoundedCornerShape(8.dp))
+                            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = AppCjkFontFamily),
+                        color = colors.textSecondary,
+                        maxLines = 1,
+                    )
+                }
+                if (item.response.glossary.size > previewTerms.size) {
+                    Text(
+                        text = "+${item.response.glossary.size - previewTerms.size} more",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                    )
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Ready deck",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
+                Text(
+                    text = if (item.response.glossary.isEmpty()) "0%" else "100%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.textPrimary,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(colors.surfaceRaised, RoundedCornerShape(100.dp)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(if (item.response.glossary.isEmpty()) 0f else 1f)
+                        .height(4.dp)
+                        .background(colors.accentBg, RoundedCornerShape(100.dp)),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            PrimaryPillButton(
+                text = "Start Flashcards",
                 onClick = onStart,
                 enabled = item.response.glossary.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Start flashcards")
-            }
+                modifier = Modifier.weight(2f),
+            )
+            SecondaryPillButton(
+                text = "Cards",
+                onClick = onStart,
+                enabled = item.response.glossary.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
 
 @Composable
 private fun EmptyFlashcardsState(modifier: Modifier = Modifier) {
-    Surface(
+    AppCard(
         modifier = modifier.widthIn(max = 360.dp),
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "No flashcards yet",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "Saved glossary words will appear here.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
+        Text(
+            text = "No flashcards yet",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.appColors.textPrimary,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = "Saved glossary words will appear here.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.appColors.textSecondary,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -323,12 +424,13 @@ private fun FlashcardStage(
             text = "${currentIndex + 1} / ${cards.size}",
             modifier = Modifier
                 .background(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    color = MaterialTheme.appColors.surface.copy(alpha = 0.92f),
                     shape = RoundedCornerShape(999.dp),
                 )
+                .border(1.dp, MaterialTheme.appColors.border, RoundedCornerShape(999.dp))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.appColors.textPrimary,
         )
         Spacer(modifier = Modifier.height(16.dp))
         Box(
@@ -460,21 +562,22 @@ private fun FlashcardStackPreview(
 ) {
     ElevatedCard(
         modifier = modifier.alpha(0.68f),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = MaterialTheme.appColors.surfaceRaised,
         ),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .border(1.dp, MaterialTheme.appColors.border, RoundedCornerShape(14.dp))
                 .padding(32.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = card.hanzi,
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f),
+                style = MaterialTheme.typography.displaySmall.copy(fontFamily = AppCjkFontFamily),
+                color = MaterialTheme.appColors.textMuted,
                 textAlign = TextAlign.Center,
             )
         }
@@ -506,14 +609,15 @@ private fun FlashcardCard(
                 this.cameraDistance = cameraDistance
             }
             .clickable(onClick = onFlip),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = MaterialTheme.appColors.surface,
         ),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .border(1.dp, MaterialTheme.appColors.border, RoundedCornerShape(14.dp))
                 .graphicsLayer {
                     if (showBack) {
                         rotationY = 180f
@@ -549,9 +653,10 @@ private fun FlashcardFront(
     ) {
         Text(
             text = card.hanzi,
-            style = MaterialTheme.typography.displayLarge,
+            style = MaterialTheme.typography.displayLarge.copy(fontFamily = AppCjkFontFamily),
             fontSize = fontSize,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.appColors.textPrimary,
             textAlign = TextAlign.Center,
             lineHeight = (fontSize.value * 1.18f).sp,
         )
@@ -573,10 +678,12 @@ private fun FlashcardBack(
         FlashcardSection(
             title = "Glossary",
             body = card.hanzi,
+            useCjkFont = true,
         )
         FlashcardSection(
             title = "Han yu pin yin",
             body = card.pinyin?.toToneMarkedPinyin() ?: "Pinyin not available yet.",
+            useCjkFont = true,
         )
         FlashcardSection(
             title = "Literal meaning",
@@ -586,6 +693,7 @@ private fun FlashcardBack(
             title = "Sentence",
             body = card.sentence ?: "Sentence not available yet.",
             supporting = card.sentencePinyin?.toToneMarkedPinyin(),
+            useCjkFont = true,
         )
         card.sentenceTranslation?.let { translation ->
             FlashcardSection(
@@ -602,26 +710,27 @@ private fun FlashcardSection(
     body: String,
     modifier: Modifier = Modifier,
     supporting: String? = null,
+    useCjkFont: Boolean = false,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        SectionLabel(text = title)
         Text(
             text = body,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
+            style = if (useCjkFont) {
+                MaterialTheme.typography.bodyLarge.copy(fontFamily = AppCjkFontFamily)
+            } else {
+                MaterialTheme.typography.bodyLarge
+            },
+            color = MaterialTheme.appColors.textPrimary,
         )
         supporting?.let { detail ->
             Text(
                 text = detail,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = AppCjkFontFamily),
+                color = MaterialTheme.appColors.textSecondary,
             )
         }
     }

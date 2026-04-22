@@ -1,5 +1,8 @@
 package com.hanyupinyin.feature.saved
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,30 +10,42 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.hanyupinyin.app.theme.AppCard
+import com.hanyupinyin.app.theme.AppCjkFontFamily
+import com.hanyupinyin.app.theme.AppPill
+import com.hanyupinyin.app.theme.EmptyState
+import com.hanyupinyin.app.theme.SectionLabel
+import com.hanyupinyin.app.theme.appColors
+import com.hanyupinyin.app.theme.topBorder
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.SavedStudyItem
 import java.time.Instant
@@ -44,49 +59,82 @@ private val SavedStudyTimeFormatter: DateTimeFormatter = DateTimeFormatter
 @Composable
 fun SavedRoute(
     onOpenReader: (AnalyzeImageResponse) -> Unit,
+    onOpenStudy: () -> Unit,
     viewModel: SavedStudiesViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val colors = MaterialTheme.appColors
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var newestFirst by rememberSaveable { mutableStateOf(true) }
+    val visibleItems = remember(uiState.items, searchQuery, newestFirst) {
+        val filtered = uiState.items.filter { item ->
+            val query = searchQuery.trim()
+            query.isBlank() ||
+                item.title.contains(query, ignoreCase = true) ||
+                item.response.documentText.contains(query, ignoreCase = true) ||
+                item.response.glossary.any { entry ->
+                    entry.hanzi.contains(query, ignoreCase = true) ||
+                        entry.meaning.orEmpty().contains(query, ignoreCase = true)
+                }
+        }
+        if (newestFirst) {
+            filtered.sortedByDescending { it.savedAtEpochMillis }
+        } else {
+            filtered.sortedBy { it.savedAtEpochMillis }
+        }
+    }
 
     when {
         uiState.isLoading -> {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colors.bg),
                 contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(
+                    color = colors.accentFg,
+                    trackColor = colors.surfaceRaised,
+                )
             }
         }
 
         uiState.items.isEmpty() -> {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colors.bg),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = "No saved studies yet",
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Text(
-                        text = "Open the reader after an analysis and save the glossary plus parsed text for later review.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                EmptyState(
+                    title = "No saved studies yet",
+                    body = "Open the reader after an analysis and save the glossary plus parsed text for later review.",
+                )
             }
         }
 
         else -> {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colors.bg),
+                contentPadding = PaddingValues(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
+                item {
+                    LibraryHeader(
+                        newestFirst = newestFirst,
+                        onToggleSort = { newestFirst = !newestFirst },
+                    )
+                }
+
+                item {
+                    SearchField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                    )
+                }
+
                 uiState.notice?.let { notice ->
                     item {
                         MessageCard(
@@ -98,16 +146,35 @@ fun SavedRoute(
                 uiState.errorMessage?.let { error ->
                     item {
                         MessageCard(
-                            title = "Couldn't update saved studies",
+                            title = "Couldn't update library",
                             body = error,
-                            titleColor = MaterialTheme.colorScheme.error,
+                            isDanger = true,
                         )
                     }
                 }
-                items(uiState.items, key = { item -> item.id }) { item ->
+
+                if (visibleItems.isEmpty()) {
+                    item {
+                        AppCard(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "No matches",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = colors.textPrimary,
+                            )
+                            Text(
+                                text = "Try another saved scan, glossary term, or translation.",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = colors.textSecondary,
+                            )
+                        }
+                    }
+                }
+
+                items(visibleItems, key = { item -> item.id }) { item ->
                     SavedStudyCard(
                         item = item,
                         onOpenReader = { onOpenReader(item.response) },
+                        onOpenStudy = onOpenStudy,
                         onDelete = {
                             viewModel.clearMessages()
                             viewModel.deleteStudy(item.id)
@@ -120,108 +187,217 @@ fun SavedRoute(
 }
 
 @Composable
+private fun LibraryHeader(
+    newestFirst: Boolean,
+    onToggleSort: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Library",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.appColors.textPrimary,
+        )
+        Text(
+            text = if (newestFirst) "Newest" else "Oldest",
+            modifier = Modifier
+                .clickable(onClick = onToggleSort)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.appColors.textSecondary,
+        )
+    }
+}
+
+@Composable
+private fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+) {
+    val colors = MaterialTheme.appColors
+
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.textPrimary),
+        cursorBrush = SolidColor(colors.accentFg),
+        decorationBox = { innerTextField ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(colors.surface, RoundedCornerShape(10.dp))
+                    .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = null,
+                    tint = colors.textMuted,
+                )
+                Box(modifier = Modifier.weight(1f)) {
+                    if (value.isBlank()) {
+                        Text(
+                            text = "Search saved scans...",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colors.textMuted,
+                        )
+                    }
+                    innerTextField()
+                }
+            }
+        },
+    )
+}
+
+@Composable
 private fun SavedStudyCard(
     item: SavedStudyItem,
     onOpenReader: () -> Unit,
+    onOpenStudy: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ElevatedCard(modifier = modifier.fillMaxWidth()) {
+    val colors = MaterialTheme.appColors
+
+    AppCard(
+        modifier = modifier.fillMaxWidth(),
+        padding = PaddingValues(0.dp),
+    ) {
         Column(
             modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.Top,
             ) {
-                Text(
-                    text = item.title,
+                Column(
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                FilledIconButton(
-                    onClick = onDelete,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleLarge.copy(fontFamily = AppCjkFontFamily),
+                        fontWeight = FontWeight.Bold,
+                        color = colors.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "Saved ${SavedStudyTimeFormatter.format(Instant.ofEpochMilli(item.savedAtEpochMillis))}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textMuted,
+                    )
+                }
+                AppPill(
+                    label = "${item.response.glossary.size} cards",
+                    selected = true,
+                )
+                IconButton(onClick = onDelete) {
                     Icon(
                         imageVector = Icons.Outlined.Delete,
                         contentDescription = "Delete saved study",
+                        tint = colors.danger,
                     )
                 }
             }
             Text(
-                text = "Saved ${SavedStudyTimeFormatter.format(Instant.ofEpochMilli(item.savedAtEpochMillis))}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "Parsed image text",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
                 text = item.response.documentText,
                 style = MaterialTheme.typography.bodyMedium,
-                maxLines = 8,
+                color = colors.textSecondary,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = "Glossary (${item.response.glossary.size})",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = item.response.glossary.joinToString(separator = ", ") { entry ->
-                    buildString {
-                        append(entry.hanzi)
-                        entry.meaning?.takeIf { it.isNotBlank() }?.let { meaning ->
-                            append(" ($meaning)")
+            if (item.response.glossary.isNotEmpty()) {
+                SectionLabel(text = "Glossary")
+                Text(
+                    text = item.response.glossary.take(5).joinToString(separator = ", ") { entry ->
+                        buildString {
+                            append(entry.hanzi)
+                            entry.meaning?.takeIf { it.isNotBlank() }?.let { meaning ->
+                                append(" ($meaning)")
+                            }
                         }
-                    }
-                }.ifBlank { "No saved glossary terms." },
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Button(
-                    onClick = onOpenReader,
-                    modifier = Modifier.widthIn(min = 180.dp),
-                ) {
-                    Text("Open reader")
-                }
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = AppCjkFontFamily),
+                    color = colors.textSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .topBorder(colors.border),
+        ) {
+            LibraryAction(
+                text = "Open Reader",
+                onClick = onOpenReader,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(44.dp)
+                    .background(colors.border)
+            )
+            LibraryAction(
+                text = "Flashcards ->",
+                onClick = onOpenStudy,
+                modifier = Modifier.weight(1f),
+                muted = true,
+            )
+        }
     }
+}
+
+@Composable
+private fun LibraryAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    muted: Boolean = false,
+) {
+    Text(
+        text = text,
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        style = MaterialTheme.typography.labelLarge,
+        color = if (muted) {
+            MaterialTheme.appColors.textSecondary
+        } else {
+            MaterialTheme.appColors.accentFg
+        },
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @Composable
 private fun MessageCard(
     title: String,
     body: String,
-    titleColor: Color? = null,
+    isDanger: Boolean = false,
 ) {
-    ElevatedCard {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                color = titleColor ?: MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-        }
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            color = if (isDanger) MaterialTheme.appColors.danger else MaterialTheme.appColors.textPrimary,
+        )
+        Text(
+            text = body,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.appColors.textSecondary,
+        )
     }
 }

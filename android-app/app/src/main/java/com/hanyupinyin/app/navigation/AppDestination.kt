@@ -25,13 +25,13 @@ sealed class AppDestination(
 
     data object Saved : AppDestination(
         route = "saved",
-        title = "Saved",
+        title = "Library",
         topLevel = true,
     )
 
     data object Flashcards : AppDestination(
         route = "flashcards",
-        title = "Flashcards",
+        title = "Study",
         topLevel = true,
     )
 

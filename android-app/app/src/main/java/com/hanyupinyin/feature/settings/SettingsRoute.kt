@@ -1,5 +1,8 @@
 package com.hanyupinyin.feature.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,15 +14,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -34,17 +37,26 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hanyupinyin.app.data.LanguageOption
 import com.hanyupinyin.app.data.StudyPreferences
+import com.hanyupinyin.app.theme.AppCard
+import com.hanyupinyin.app.theme.SectionLabel
+import com.hanyupinyin.app.theme.appColors
 
 @Composable
 fun SettingsRoute(viewModel: SettingsViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val colors = MaterialTheme.appColors
 
     if (uiState.isLoading) {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.bg),
             contentAlignment = Alignment.Center,
         ) {
-            CircularProgressIndicator()
+            CircularProgressIndicator(
+                color = colors.accentFg,
+                trackColor = colors.surfaceRaised,
+            )
         }
         return
     }
@@ -52,41 +64,26 @@ fun SettingsRoute(viewModel: SettingsViewModel = viewModel()) {
     val settings = uiState.settings
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.bg),
+        contentPadding = PaddingValues(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            ElevatedCard {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(
-                        text = "Make the app feel like yours.",
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Text(
-                        text = "Tune the theme, reading language, and a few reader shortcuts. Backend wiring stays automatic in the background now.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineSmall,
+                color = colors.textPrimary,
+            )
         }
 
         item {
-            SettingsSectionCard(
-                title = "Appearance",
-                subtitle = "The top-right button switches modes instantly, and the same preference lives here too.",
-            ) {
+            SettingsGroup(label = "Appearance") {
                 SettingToggleRow(
+                    iconText = "A",
                     title = "Dark mode",
-                    subtitle = if (settings.useDarkTheme) {
-                        "Use the darker palette across the whole app."
-                    } else {
-                        "Use the brighter study-friendly palette."
-                    },
+                    subtitle = "Switch between light and dark",
                     checked = settings.useDarkTheme,
                     onCheckedChange = viewModel::onDarkThemeChanged,
                 )
@@ -94,51 +91,37 @@ fun SettingsRoute(viewModel: SettingsViewModel = viewModel()) {
         }
 
         item {
-            SettingsSectionCard(
-                title = "Study languages",
-                subtitle = "Choose what language is in the photo, then choose the language you want the translations and meanings to use.",
-            ) {
-                LanguageDropdown(
-                    label = "Input language",
+            SettingsGroup(label = "Languages") {
+                LanguageDropdownRow(
+                    iconText = "In",
+                    title = "Input language",
                     options = StudyPreferences.inputLanguageOptions,
                     selectedCode = settings.inputLanguage,
                     onSelected = viewModel::onInputLanguageChanged,
                 )
-
-                LanguageDropdown(
-                    label = "Output language",
+                LanguageDropdownRow(
+                    iconText = "Out",
+                    title = "Output language",
                     options = StudyPreferences.outputLanguageOptions,
                     selectedCode = settings.outputLanguage,
                     onSelected = viewModel::onOutputLanguageChanged,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-
-                Text(
-                    text = if (settings.inputLanguage == settings.outputLanguage) {
-                        "When source and output match, the app will fall back to simpler learner-friendly paraphrases."
-                    } else {
-                        "Sentence translations, token meanings, and glossary meanings will follow the output language."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
 
         item {
-            SettingsSectionCard(
-                title = "Reader & upload",
-                subtitle = "A few quality-of-life touches for how the app behaves after each scan.",
-            ) {
+            SettingsGroup(label = "Reader & Upload") {
                 SettingToggleRow(
-                    title = "Open reader automatically",
-                    subtitle = "Jump straight into the reader after a successful analysis.",
+                    iconText = "R",
+                    title = "Auto-open reader",
+                    subtitle = "Jump straight to reader after scan",
                     checked = settings.autoOpenReader,
                     onCheckedChange = viewModel::onAutoOpenReaderChanged,
                 )
                 SettingToggleRow(
-                    title = "Show OCR preview on success card",
-                    subtitle = "Keep a short parsed-text preview on the upload result card.",
+                    iconText = "OCR",
+                    title = "OCR preview",
+                    subtitle = "Show parsed text on the upload success card",
                     checked = settings.showParsedTextPreview,
                     onCheckedChange = viewModel::onShowParsedTextPreviewChanged,
                 )
@@ -146,13 +129,11 @@ fun SettingsRoute(viewModel: SettingsViewModel = viewModel()) {
         }
 
         item {
-            SettingsSectionCard(
-                title = "Diagnostics",
-                subtitle = "A small helper for checking loading states without changing the data source.",
-            ) {
+            SettingsGroup(label = "Diagnostics") {
                 SettingToggleRow(
+                    iconText = "D",
                     title = "Simulate slower responses",
-                    subtitle = "Add a short pause so loading states are easier to review.",
+                    subtitle = "Add a short pause so loading states are easier to review",
                     checked = settings.simulateSlowResponses,
                     onCheckedChange = viewModel::onSimulateSlowResponsesChanged,
                 )
@@ -161,21 +142,17 @@ fun SettingsRoute(viewModel: SettingsViewModel = viewModel()) {
 
         uiState.errorMessage?.let { errorMessage ->
             item {
-                ElevatedCard {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = "Could not update settings",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Text(
-                            text = errorMessage,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Could not update settings",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = colors.danger,
+                    )
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = colors.textSecondary,
+                    )
                 }
             }
         }
@@ -183,39 +160,28 @@ fun SettingsRoute(viewModel: SettingsViewModel = viewModel()) {
 }
 
 @Composable
-private fun SettingsSectionCard(
-    title: String,
-    subtitle: String,
+private fun SettingsGroup(
+    label: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    ElevatedCard {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            content = {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                content()
-            },
-        )
+    AppCard(
+        modifier = Modifier.fillMaxWidth(),
+        padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        SectionLabel(text = label)
+        content()
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LanguageDropdown(
-    label: String,
+private fun LanguageDropdownRow(
+    iconText: String,
+    title: String,
     options: List<LanguageOption>,
     selectedCode: String,
     onSelected: (String) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedOption = options.firstOrNull { it.code == selectedCode } ?: options.first()
@@ -223,25 +189,28 @@ private fun LanguageDropdown(
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { expanded = !expanded },
-        modifier = modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        OutlinedTextField(
-            value = selectedOption.label,
-            onValueChange = {},
-            readOnly = true,
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            label = { Text(label) },
-            supportingText = { Text(selectedOption.description) },
-            trailingIcon = {
-                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+        SettingsRow(
+            iconText = iconText,
+            title = title,
+            subtitle = selectedOption.label,
+            trailing = {
+                Text(
+                    text = ">",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.appColors.textMuted,
+                )
             },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .clickable { expanded = true },
         )
 
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
+            containerColor = MaterialTheme.appColors.surface,
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
@@ -251,11 +220,12 @@ private fun LanguageDropdown(
                                 text = option.label,
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.appColors.textPrimary,
                             )
                             Text(
                                 text = option.description,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.appColors.textSecondary,
                             )
                         }
                     },
@@ -271,33 +241,80 @@ private fun LanguageDropdown(
 
 @Composable
 private fun SettingToggleRow(
+    iconText: String,
     title: String,
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val colors = MaterialTheme.appColors
+
+    SettingsRow(
+        iconText = iconText,
+        title = title,
+        subtitle = subtitle,
+        trailing = {
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = colors.accentBtnText,
+                    checkedTrackColor = colors.accentBg,
+                    checkedBorderColor = colors.accentBg,
+                    uncheckedThumbColor = colors.textMuted,
+                    uncheckedTrackColor = colors.surfaceRaised,
+                    uncheckedBorderColor = colors.border,
+                ),
+            )
+        },
+    )
+}
+
+@Composable
+private fun SettingsRow(
+    iconText: String,
+    title: String,
+    subtitle: String,
+    trailing: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.appColors
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .background(colors.surfaceRaised, RoundedCornerShape(9.dp))
+                .border(1.dp, colors.border, RoundedCornerShape(9.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = iconText,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textSecondary,
+            )
+        }
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
+                color = colors.textPrimary,
             )
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
             )
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-        )
+        trailing()
     }
 }

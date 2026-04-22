@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,9 +16,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,6 +27,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hanyupinyin.app.theme.AppCard
+import com.hanyupinyin.app.theme.AppCjkFontFamily
+import com.hanyupinyin.app.theme.AppPill
+import com.hanyupinyin.app.theme.EmptyState
+import com.hanyupinyin.app.theme.PrimaryPillButton
+import com.hanyupinyin.app.theme.SectionLabel
+import com.hanyupinyin.app.theme.appColors
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.StudySentence
 import com.hanyupinyin.core.model.StudyToken
@@ -42,60 +47,69 @@ internal fun ReaderSummaryCard(
     onSaveStudy: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = MaterialTheme.appColors
     val readerPreview = response.sentences.joinToString(separator = "\n") { it.hanzi }
         .ifBlank { response.documentText }
 
-    ElevatedCard(
+    AppCard(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
+        containerColor = colors.accentBgAlpha,
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
         ) {
-            Text(
-                text = "Study Reader",
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                text = "${response.sentences.size} sentences in reading order | ${response.glossary.size} glossary terms",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            notice?.let { message ->
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    text = "Study Reader",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = colors.textPrimary,
+                )
+                Text(
+                    text = "${response.sentences.size} sentences | ${response.glossary.size} terms",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textSecondary,
                 )
             }
-            errorMessage?.let { message ->
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
+            AppPill(label = response.language.uppercase())
+        }
+        notice?.let { message ->
             Text(
-                text = readerPreview,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.accentFg,
             )
-            Button(onClick = onSaveStudy) {
-                Text("Save study")
-            }
-            if (response.warnings.isEmpty()) {
-                Text(
-                    text = "Tap any token or glossary term to explore pronunciation and meaning details.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                WarningSummary(warnings = response.warnings)
-            }
+        }
+        errorMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.danger,
+            )
+        }
+        Text(
+            text = readerPreview,
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = AppCjkFontFamily),
+            color = colors.textPrimary,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+        )
+        PrimaryPillButton(
+            text = "Save study",
+            onClick = onSaveStudy,
+        )
+        if (response.warnings.isEmpty()) {
+            Text(
+                text = "Tap any token or glossary term to explore pronunciation and meaning details.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+            )
+        } else {
+            WarningSummary(warnings = response.warnings)
         }
     }
 }
@@ -106,22 +120,10 @@ internal fun ReaderEmptyState(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "No study content yet",
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                text = "Analyze an image to start reading.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
+        EmptyState(
+            title = "No study content yet",
+            body = "Analyze an image to start reading.",
+        )
     }
 }
 
@@ -132,46 +134,42 @@ internal fun SentenceCard(
     onTokenClick: (StudyToken) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ElevatedCard(
+    val colors = MaterialTheme.appColors
+
+    AppCard(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            SectionLabel(text = "Sentence $sentenceNumber")
+            AppPill(label = "${sentence.tokens.size} tokens")
+        }
+        Text(
+            text = sentence.hanzi,
+            style = MaterialTheme.typography.headlineSmall.copy(fontFamily = AppCjkFontFamily),
+            color = colors.textPrimary,
+        )
+        if (sentence.pinyin.isNotBlank()) {
             Text(
-                text = "Sentence $sentenceNumber",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                text = sentence.hanzi,
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            if (sentence.pinyin.isNotBlank()) {
-                Text(
-                    text = sentence.pinyin.toToneMarkedPinyin(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            TokenFlow(
-                tokens = sentence.tokens,
-                onTokenClick = onTokenClick,
-            )
-            Text(
-                text = "Translation",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = sentence.translation?.takeIf { it.isNotBlank() } ?: "Translation unavailable.",
-                style = MaterialTheme.typography.bodyLarge,
+                text = sentence.pinyin.toToneMarkedPinyin(),
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = AppCjkFontFamily),
+                color = colors.textSecondary,
             )
         }
+        TokenFlow(
+            tokens = sentence.tokens,
+            onTokenClick = onTokenClick,
+        )
+        SectionLabel(text = "Translation")
+        Text(
+            text = sentence.translation?.takeIf { it.isNotBlank() } ?: "Translation unavailable.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = colors.textPrimary,
+        )
     }
 }
 
@@ -202,11 +200,12 @@ private fun TokenPinyinChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(20.dp)
-    val containerColor = when (token.pinyinSource) {
-        "vision_hint" -> MaterialTheme.colorScheme.tertiaryContainer
-        "text_model_hint" -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
+    val colors = MaterialTheme.appColors
+    val shape = RoundedCornerShape(10.dp)
+    val containerColor = if (token.pinyinSource == "vision_hint") {
+        colors.accentBgAlpha
+    } else {
+        colors.surfaceRaised
     }
 
     Column(
@@ -214,11 +213,7 @@ private fun TokenPinyinChip(
             .widthIn(min = 68.dp)
             .clip(shape)
             .background(containerColor)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline,
-                shape = shape,
-            )
+            .border(1.dp, colors.border, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -226,16 +221,17 @@ private fun TokenPinyinChip(
     ) {
         Text(
             text = token.pinyin.toToneMarkedPinyin(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = AppCjkFontFamily),
+            color = colors.textSecondary,
             textAlign = TextAlign.Center,
             fontSize = 12.sp,
             lineHeight = 14.sp,
         )
         Text(
             text = token.hanzi,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.titleLarge.copy(fontFamily = AppCjkFontFamily),
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
             textAlign = TextAlign.Center,
         )
     }
@@ -246,18 +242,21 @@ private fun WarningSummary(
     warnings: List<String>,
     modifier: Modifier = Modifier,
 ) {
+    val colors = MaterialTheme.appColors
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.errorContainer)
+            .clip(RoundedCornerShape(14.dp))
+            .background(colors.surfaceRaised)
+            .border(1.dp, colors.border, RoundedCornerShape(14.dp))
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
             text = "Warnings",
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onErrorContainer,
+            color = colors.danger,
         )
         Column(
             modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -267,7 +266,7 @@ private fun WarningSummary(
                 Text(
                     text = "- $warning",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = colors.textSecondary,
                 )
             }
         }

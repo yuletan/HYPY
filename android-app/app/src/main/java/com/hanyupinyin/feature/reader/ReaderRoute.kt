@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.hanyupinyin.app.theme.appColors
 import com.hanyupinyin.app.theme.HanYuPinYinTheme
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.GlossaryEntry
@@ -43,7 +44,9 @@ fun ReaderRoute(
         mutableStateOf<GlossaryDetails?>(null)
     }
 
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface) { innerPadding ->
+    val colors = MaterialTheme.appColors
+
+    Scaffold(containerColor = colors.bg) { innerPadding ->
         if (response == null || response.sentences.isEmpty()) {
             ReaderEmptyState(
                 modifier = Modifier
@@ -55,7 +58,7 @@ fun ReaderRoute(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item {
@@ -76,14 +79,14 @@ fun ReaderRoute(
                     SentenceCard(
                         sentence = sentence,
                         sentenceNumber = index + 1,
-                            onTokenClick = { token ->
-                                selectedDetails = token.toGlossaryDetails(
-                                    sentence = sentence,
-                                    glossary = response.glossary,
-                                )
-                            },
-                        )
-                    }
+                        onTokenClick = { token ->
+                            selectedDetails = token.toGlossaryDetails(
+                                sentence = sentence,
+                                glossary = response.glossary,
+                            )
+                        },
+                    )
+                }
                 if (response.glossary.isNotEmpty()) {
                     item {
                         GlossaryPanel(
@@ -99,7 +102,10 @@ fun ReaderRoute(
     }
 
     selectedDetails?.let { details ->
-        ModalBottomSheet(onDismissRequest = { selectedDetails = null }) {
+        ModalBottomSheet(
+            onDismissRequest = { selectedDetails = null },
+            containerColor = colors.surface,
+        ) {
             GlossaryDetailsSheet(
                 details = details,
                 modifier = Modifier.navigationBarsPadding(),

@@ -13,7 +13,7 @@ private val Context.appSettingsDataStore by preferencesDataStore(name = "app_set
 data class AppSettings(
     val backendBaseUrl: String = BackendBaseUrlResolver.defaultBaseUrl(),
     val simulateSlowResponses: Boolean = false,
-    val useDarkTheme: Boolean = false,
+    val useDarkTheme: Boolean = true,
     val inputLanguage: String = StudyPreferences.INPUT_LANGUAGE_AUTO,
     val outputLanguage: String = StudyPreferences.OUTPUT_LANGUAGE_ENGLISH,
     val autoOpenReader: Boolean = true,
@@ -56,7 +56,7 @@ class AppSettingsRepository(private val context: Context) {
         AppSettings(
             backendBaseUrl = resolvedBaseUrl,
             simulateSlowResponses = preferences[SIMULATE_SLOW_RESPONSES_KEY] ?: false,
-            useDarkTheme = preferences[USE_DARK_THEME_KEY] ?: false,
+            useDarkTheme = preferences[USE_DARK_THEME_KEY] ?: true,
             inputLanguage = preferences[INPUT_LANGUAGE_KEY]
                 ?.takeIf { saved -> StudyPreferences.inputLanguageOptions.any { it.code == saved } }
                 ?: StudyPreferences.INPUT_LANGUAGE_AUTO,

@@ -45,6 +45,11 @@ fun AppNavGraph(
                         launchSingleTop = true
                     }
                 },
+                onOpenStudy = {
+                    navController.navigate(AppDestination.Flashcards.route) {
+                        launchSingleTop = true
+                    }
+                },
             )
         }
         composable(AppDestination.Flashcards.route) {

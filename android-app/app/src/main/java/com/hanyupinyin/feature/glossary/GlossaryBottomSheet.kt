@@ -7,14 +7,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +23,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hanyupinyin.app.theme.AppCard
+import com.hanyupinyin.app.theme.AppCjkFontFamily
+import com.hanyupinyin.app.theme.AppPill
+import com.hanyupinyin.app.theme.SectionLabel
+import com.hanyupinyin.app.theme.appColors
 import com.hanyupinyin.core.model.GlossaryEntry
 import com.hanyupinyin.core.model.toToneMarkedPinyin
 
@@ -44,6 +48,8 @@ fun GlossaryDetailsSheet(
     details: GlossaryDetails,
     modifier: Modifier = Modifier,
 ) {
+    val colors = MaterialTheme.appColors
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -54,13 +60,14 @@ fun GlossaryDetailsSheet(
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 text = details.hanzi,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.headlineMedium.copy(fontFamily = AppCjkFontFamily),
+                fontWeight = FontWeight.Bold,
+                color = colors.textPrimary,
             )
             Text(
                 text = details.pinyin.toToneMarkedPinyin(),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.titleMedium.copy(fontFamily = AppCjkFontFamily),
+                color = colors.textSecondary,
             )
         }
 
@@ -75,6 +82,7 @@ fun GlossaryDetailsSheet(
             GlossarySection(
                 title = "Example sentence",
                 body = exampleSentence,
+                useCjkFont = true,
             )
         }
 
@@ -82,6 +90,7 @@ fun GlossaryDetailsSheet(
             GlossarySection(
                 title = "Example pinyin",
                 body = exampleSentencePinyin.toToneMarkedPinyin(),
+                useCjkFont = true,
             )
         }
 
@@ -89,6 +98,7 @@ fun GlossaryDetailsSheet(
             GlossarySection(
                 title = "In this sentence",
                 body = sentence,
+                useCjkFont = true,
             )
         }
 
@@ -107,30 +117,31 @@ fun GlossaryPanel(
     onEntryClick: (GlossaryEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ElevatedCard(
+    AppCard(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
+        containerColor = MaterialTheme.appColors.accentBgAlpha,
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = "Glossary",
                 style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.appColors.textPrimary,
             )
-            Text(
-                text = "Tap a term to pin its meaning and pronunciation details in the bottom sheet.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            GlossaryEntryGrid(
-                entries = entries,
-                onEntryClick = onEntryClick,
-            )
+            AppPill(label = "${entries.size} terms")
         }
+        Text(
+            text = "Tap a term to pin its meaning and pronunciation details in the bottom sheet.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.appColors.textSecondary,
+        )
+        GlossaryEntryGrid(
+            entries = entries,
+            onEntryClick = onEntryClick,
+        )
     }
 }
 
@@ -161,11 +172,12 @@ private fun GlossaryEntryCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(20.dp)
-    val containerColor = when (entry.pinyinSource) {
-        "vision_hint" -> MaterialTheme.colorScheme.tertiaryContainer
-        "text_model_hint" -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
+    val colors = MaterialTheme.appColors
+    val shape = RoundedCornerShape(10.dp)
+    val containerColor = if (entry.pinyinSource == "vision_hint") {
+        colors.accentBgAlpha
+    } else {
+        colors.surfaceRaised
     }
 
     Column(
@@ -173,11 +185,7 @@ private fun GlossaryEntryCard(
             .widthIn(min = 92.dp, max = 172.dp)
             .clip(shape)
             .background(containerColor)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline,
-                shape = shape,
-            )
+            .border(1.dp, colors.border, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -185,19 +193,20 @@ private fun GlossaryEntryCard(
     ) {
         Text(
             text = entry.pinyin.toToneMarkedPinyin(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = AppCjkFontFamily),
+            color = colors.textSecondary,
         )
         Text(
             text = entry.hanzi,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.titleMedium.copy(fontFamily = AppCjkFontFamily),
+            fontWeight = FontWeight.Bold,
+            color = colors.textPrimary,
         )
         entry.meaning?.takeIf { it.isNotBlank() }?.let { meaning ->
             Text(
                 text = meaning,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.textSecondary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -216,25 +225,9 @@ private fun GlossaryMetaRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        MetadataChip(text = details.kindLabel)
-        MetadataChip(text = details.pinyinSource.toDisplayLabel())
+        AppPill(label = details.kindLabel)
+        AppPill(label = details.pinyinSource.toDisplayLabel())
     }
-}
-
-@Composable
-private fun MetadataChip(
-    text: String,
-    modifier: Modifier = Modifier,
-) {
-    Text(
-        text = text,
-        modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable
@@ -242,19 +235,21 @@ private fun GlossarySection(
     title: String,
     body: String,
     modifier: Modifier = Modifier,
+    useCjkFont: Boolean = false,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SectionLabel(text = title)
         Text(
             text = body,
-            style = MaterialTheme.typography.bodyLarge,
+            style = if (useCjkFont) {
+                MaterialTheme.typography.bodyLarge.copy(fontFamily = AppCjkFontFamily)
+            } else {
+                MaterialTheme.typography.bodyLarge
+            },
+            color = MaterialTheme.appColors.textPrimary,
         )
     }
 }
