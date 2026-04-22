@@ -24,6 +24,20 @@ StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 logger = logging.getLogger(__name__)
 MAX_STRUCTURED_OUTPUT_ATTEMPTS = 3
 ERROR_PREVIEW_LIMIT = 600
+_OCR_REASONING_MARKERS = (
+    "okay, let's",
+    "let's tackle",
+    "the user provided",
+    "looking at the image",
+    "i need to",
+    "i can see",
+    "first, i",
+    "translates to",
+    "which translates",
+    "the main body",
+    "there's a part",
+    "might be a",
+)
 
 
 class StudyAnalysisClient(Protocol):
@@ -91,17 +105,24 @@ class OpenRouterClient:
         image_data_url = self._to_data_url(image_bytes=image_bytes, media_type=media_type)
         source_language_name = input_language_name(input_language)
         prompt = (
-            "Extract the document text from this image in reading order.\n"
-            "Set language to zh-Hans or zh-Hant when Chinese is present.\n"
+            "You are an OCR engine, not a narrator.\n"
+            "Extract only visible document text from this image in reading order.\n"
+            "documentText must contain copied OCR text only: no explanations, no translation, no guesses, no analysis, no descriptions of the image.\n"
+            "If a character or line is unclear, omit it or add one short warning; never invent filler.\n"
+            "Never repeat a line or phrase unless it visibly appears repeated in the image.\n"
+            "Set language to zh-Hans or zh-Hant when Chinese is present, and ja when Japanese is present.\n"
             f"The preferred source language is {source_language_name}; use that as a hint when OCR is ambiguous.\n"
             "Return exactly one JSON object and nothing else.\n"
             "Do not include markdown fences, reasoning, commentary, or extra keys.\n"
+            "Do not begin with phrases like 'Okay', 'Looking at the image', or 'The user provided'.\n"
             "Use empty arrays instead of null.\n"
+            "readingLines must be copied visible text lines, not a summary of your process.\n"
             "pronunciationHints must stay phrase-level.\n"
-            "Only include a pronunciation hint when a phrase has a context-sensitive reading, such as a polyphonic word, "
+            "For Chinese, only include a pronunciation hint when a phrase has a context-sensitive reading, such as a polyphonic word, "
             "name, or proper noun that would be easy to misread without context.\n"
+            "For Japanese, include romaji pronunciation hints for useful phrases that contain kanji. Kana-only phrases do not need hints.\n"
             "Each hinted phrase must appear exactly in documentText.\n"
-            "Do not generate pinyin for every token.\n"
+            "Do not put pronunciation text anywhere except pronunciationHints.\n"
             "If you are not confident, return an empty pronunciationHints array."
         )
         payload = {
@@ -178,14 +199,14 @@ class OpenRouterClient:
 
     async def explain_selection(self, payload: ExplainSelectionRequest) -> ExplainSelectionResult:
         prompt = (
-            "Explain the selected Chinese text for a learner.\n"
+            "Explain the selected Chinese or Japanese text for a learner.\n"
             "Return exactly one JSON object and nothing else.\n"
             "Do not include markdown fences, reasoning, or extra keys.\n"
             "Use empty arrays instead of null.\n"
             "Return concise meaning, learner-friendly notes, and one to three example sentences.\n"
-            "Only include pronunciationHints when the selected text has a context-sensitive reading.\n"
+            "Only include pronunciationHints when the selected text has a context-sensitive Chinese reading or Japanese kanji reading.\n"
             "Any pronunciation hint phrase must match the selected text exactly.\n"
-            "Do not return standalone pinyin outside pronunciationHints."
+            "Do not return standalone pinyin or romaji outside pronunciationHints."
         )
         user_message = {
             "text": payload.text,
@@ -380,12 +401,15 @@ class OpenRouterClient:
         data = OpenRouterClient._coerce_structured_data(data, model_type)
 
         try:
-            return model_type.model_validate(data)
+            parsed = model_type.model_validate(data)
         except ValidationError as exc:
             raise OpenRouterResponseError(
                 "OpenRouter JSON did not match the expected schema. "
                 f"Errors: {exc.errors(include_url=False)}. Preview: {str(data)[:500]!r}"
             ) from exc
+
+        OpenRouterClient._validate_structured_quality(parsed)
+        return parsed
 
     @staticmethod
     def _coerce_structured_data(
@@ -423,6 +447,62 @@ class OpenRouterClient:
             "pronunciationHints": OpenRouterClient._coerce_pronunciation_hints(data.get("pronunciationHints")),
             "warnings": OpenRouterClient._coerce_string_list(data.get("warnings")),
         }
+
+    @staticmethod
+    def _validate_structured_quality(parsed: BaseModel) -> None:
+        if isinstance(parsed, VisionExtractionResult):
+            OpenRouterClient._validate_vision_extraction_quality(parsed)
+
+    @staticmethod
+    def _validate_vision_extraction_quality(result: VisionExtractionResult) -> None:
+        suspicious_fields = [result.document_text, *result.reading_lines]
+        for field in suspicious_fields:
+            if OpenRouterClient._contains_ocr_reasoning(field):
+                raise OpenRouterResponseError(
+                    "Vision extraction included reasoning/commentary inside OCR text. "
+                    "Return only text visibly present in the image."
+                )
+
+        if OpenRouterClient._has_pathological_repetition(result.document_text):
+            raise OpenRouterResponseError(
+                "Vision extraction appears to contain hallucinated repeated text. "
+                "Return each visible line only once unless it visibly repeats in the image."
+            )
+
+    @staticmethod
+    def _contains_ocr_reasoning(text: str) -> bool:
+        normalized = " ".join(text.lower().split())
+        return any(marker in normalized for marker in _OCR_REASONING_MARKERS)
+
+    @staticmethod
+    def _has_pathological_repetition(text: str) -> bool:
+        normalized = " ".join(text.split())
+        if len(normalized) < 240:
+            return False
+
+        segments = [
+            segment.strip()
+            for segment in re.split(r"[、，,。.!?\n]+", normalized)
+            if len(segment.strip()) >= 2
+        ]
+        segment_counts: dict[str, int] = {}
+        for segment in segments:
+            segment_counts[segment] = segment_counts.get(segment, 0) + 1
+        if any(count >= 8 for count in segment_counts.values()):
+            return True
+
+        tokens = normalized.split()
+        for width in range(2, 7):
+            if len(tokens) < width * 8:
+                continue
+            ngram_counts: dict[tuple[str, ...], int] = {}
+            for index in range(0, len(tokens) - width + 1):
+                ngram = tuple(tokens[index : index + width])
+                ngram_counts[ngram] = ngram_counts.get(ngram, 0) + 1
+            if any(count >= 10 for count in ngram_counts.values()):
+                return True
+
+        return False
 
     @staticmethod
     def _coerce_text_analysis_data(data: Any) -> Any:
@@ -601,10 +681,10 @@ class OpenRouterClient:
 
     @staticmethod
     def _infer_language(document_text: str) -> str:
-        if re.search(r"[\u4e00-\u9fff]", document_text):
-            return "zh-Hans"
         if re.search(r"[\u3040-\u30ff]", document_text):
             return "ja"
+        if re.search(r"[\u4e00-\u9fff]", document_text):
+            return "zh-Hans"
         if re.search(r"[\uac00-\ud7af]", document_text):
             return "ko"
         if re.search(r"[A-Za-z]", document_text):

@@ -9,6 +9,7 @@ data class LanguageOption(
 object StudyPreferences {
     const val INPUT_LANGUAGE_AUTO = "auto"
     const val INPUT_LANGUAGE_CHINESE = "zh"
+    const val INPUT_LANGUAGE_JAPANESE = "ja"
     const val INPUT_LANGUAGE_ENGLISH = "en"
 
     const val OUTPUT_LANGUAGE_ENGLISH = "en"
@@ -32,6 +33,11 @@ object StudyPreferences {
             code = INPUT_LANGUAGE_CHINESE,
             label = "Chinese",
             description = "Use when the photo is mainly Chinese text.",
+        ),
+        LanguageOption(
+            code = INPUT_LANGUAGE_JAPANESE,
+            label = "Japanese",
+            description = "Use when the photo is mainly Japanese text.",
         ),
         LanguageOption(
             code = INPUT_LANGUAGE_ENGLISH,

@@ -1,6 +1,7 @@
 SUPPORTED_INPUT_LANGUAGE_NAMES = {
     "auto": "auto-detect",
     "zh": "Chinese",
+    "ja": "Japanese",
     "en": "English",
 }
 

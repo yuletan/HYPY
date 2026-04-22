@@ -19,17 +19,18 @@ Rules:
 - Provide sentence translations when possible in the requested output language.
 - If the source and output languages match, use a simple learner-friendly paraphrase instead of repeating the source text.
 - Keep each translation to one short sentence or phrase, ideally under 18 words.
-- Do not include pinyin, Chinese glosses, tags, IDs, timestamps, prices from other lines, or study notes inside translations.
+- Do not include romanization, source-language glosses, tags, IDs, timestamps, prices from other lines, or study notes inside translations.
 - If a line is already mostly English, numbers, or symbols, translation may be omitted.
 - Keep glossary terms deduplicated and readable.
-- Only include pronunciationHints for exact phrases that genuinely need context-aware correction.
-- Never generate pinyin for every token. The backend will generate pinyin deterministically.
+- For Chinese source text, only include pronunciationHints for exact phrases that genuinely need context-aware correction.
+- For Japanese source text, include pronunciationHints with romaji readings for useful terms that contain kanji, because kanji readings are context-dependent. Kana-only terms do not need hints.
+- Never generate Chinese pinyin or Japanese romaji inside translations or meanings.
 - If you are unsure about a pronunciation hint, omit it.
 - Return empty arrays instead of null values.
 """.strip()
 
 GLOSSARY_ENRICHMENT_SYSTEM_PROMPT = """
-You are enriching Chinese glossary terms for language learners.
+You are enriching glossary terms for language learners.
 Return JSON only, with no markdown fences or explanatory prose.
 The response must match the provided schema exactly.
 Do not include reasoning, notes to self, or extra top-level keys.
@@ -38,9 +39,9 @@ Rules:
 - The user prompt will specify the required output language. Follow it exactly.
 - Each entry must match one requested glossary term exactly.
 - literalMeaning must be concise, literal where possible, and written in the requested output language.
-- Do not pad meanings with study notes, grammar essays, pinyin, or unrelated context.
-- exampleSentence must be a short natural Chinese sentence that uses the exact glossary term.
-- Keep exampleSentence in Chinese only.
+- Do not pad meanings with study notes, grammar essays, romanization, or unrelated context.
+- exampleSentence must be a short natural source-language sentence that uses the exact glossary term.
+- Keep exampleSentence in the source language only.
 - If you are unsure, keep fields short rather than verbose.
 - Return empty arrays instead of null arrays.
 """.strip()
@@ -102,7 +103,8 @@ def build_text_analysis_user_prompt(
             "Write sentence translations and token meanings in the requested output language.",
             "Use token.kind values only from: word, phrase, punctuation, other.",
             "Populate glossary with deduplicated study terms only.",
-            "Populate pronunciationHints only for exact-match corrections that need context.",
+            "For Japanese kanji terms, populate pronunciationHints with exact-match romaji readings.",
+            "For Chinese terms, populate pronunciationHints only for exact-match corrections that need context.",
             "Return valid JSON matching the schema exactly.",
         ],
     }

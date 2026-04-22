@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.clients.openrouter import OpenRouterClient, OpenRouterResponseError
@@ -108,6 +110,61 @@ def test_parse_structured_content_repairs_partial_vision_payload() -> None:
     assert result.reading_lines == ["Hong Fan Tian Mala hot pot"]
     assert result.pronunciation_hints == []
     assert result.warnings == []
+
+
+def test_parse_structured_content_rejects_reasoning_inside_vision_text() -> None:
+    content = json.dumps(
+        {
+            "documentText": "Okay, let's tackle this OCR task. Looking at the image, 東日本巨大地震 appears.",
+            "language": "ja",
+            "readingLines": [],
+            "pronunciationHints": [],
+            "warnings": [],
+        },
+        ensure_ascii=False,
+    )
+    payload = {
+        "choices": [
+            {
+                "message": {
+                    "content": content,
+                }
+            }
+        ]
+    }
+
+    with pytest.raises(OpenRouterResponseError) as exc_info:
+        OpenRouterClient._parse_structured_content(payload, VisionExtractionResult)
+
+    assert "reasoning/commentary" in str(exc_info.value)
+
+
+def test_parse_structured_content_rejects_repeated_vision_hallucination() -> None:
+    repeated = "東日本巨大地震\\n" + "、".join(["15 3 号機"] * 40)
+    content = json.dumps(
+        {
+            "documentText": repeated,
+            "language": "ja",
+            "readingLines": [repeated],
+            "pronunciationHints": [],
+            "warnings": [],
+        },
+        ensure_ascii=False,
+    )
+    payload = {
+        "choices": [
+            {
+                "message": {
+                    "content": content,
+                }
+            }
+        ]
+    }
+
+    with pytest.raises(OpenRouterResponseError) as exc_info:
+        OpenRouterClient._parse_structured_content(payload, VisionExtractionResult)
+
+    assert "repeated text" in str(exc_info.value)
 
 
 def test_parse_structured_content_repairs_empty_token_list_with_full_sentence_fallback() -> None:

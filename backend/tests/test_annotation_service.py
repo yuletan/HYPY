@@ -13,7 +13,8 @@ from app.schemas.contracts import (
     VisionExtractionResult,
 )
 from app.services.annotation import apply_glossary_enrichment, build_analyze_response, build_explain_response
-from app.services.pinyin import ResolvedPinyin, compose_sentence_pinyin
+from app.services.language_options import normalize_input_language
+from app.services.pinyin import ResolvedPinyin, compose_sentence_pinyin, resolve_phrase_pinyin
 
 OCR_TEXT_FIXTURE = (Path(__file__).parent / "fixtures" / "ocr_text.txt").read_text(encoding="utf-8")
 
@@ -78,6 +79,63 @@ def test_text_model_hint_takes_precedence_in_selection_explanation() -> None:
 
     assert response.pinyin == "yín háng háng zhǎng"
     assert response.pinyin_source == "text_model_hint"
+
+
+def test_kana_romanizes_to_romaji_without_model_hint() -> None:
+    assert resolve_phrase_pinyin("\u3042\u308a\u304c\u3068\u3046", [], language="ja").pinyin == "arigatou"
+    assert resolve_phrase_pinyin("\u30ab\u30bf\u30ab\u30ca", [], language="ja").pinyin == "katakana"
+    assert resolve_phrase_pinyin("\u304d\u3063\u3066", [], language="ja").pinyin == "kitte"
+
+
+def test_japanese_kanji_uses_romaji_pronunciation_hint() -> None:
+    vision = VisionExtractionResult(
+        documentText="\u65e5\u672c\u8a9e\u3092\u52c9\u5f37\u3057\u307e\u3059\u3002",
+        language="ja",
+        readingLines=["\u65e5\u672c\u8a9e\u3092\u52c9\u5f37\u3057\u307e\u3059\u3002"],
+        pronunciationHints=[
+            PronunciationHint(
+                phrase="\u65e5\u672c\u8a9e",
+                preferredPinyin="nihongo",
+                reason="Japanese kanji reading",
+                confidence=0.95,
+            ),
+            PronunciationHint(
+                phrase="\u52c9\u5f37",
+                preferredPinyin="benkyou",
+                reason="Japanese kanji reading",
+                confidence=0.95,
+            ),
+        ],
+        warnings=[],
+    )
+    text = TextAnalysisResult(
+        sentences=[
+            TextSentence(
+                hanzi="\u65e5\u672c\u8a9e\u3092\u52c9\u5f37\u3057\u307e\u3059\u3002",
+                translation="I study Japanese.",
+                tokens=[
+                    TextToken(text="\u65e5\u672c\u8a9e", kind="word", meaning="Japanese language"),
+                    TextToken(text="\u3092", kind="word"),
+                    TextToken(text="\u52c9\u5f37", kind="word", meaning="study"),
+                    TextToken(text="\u3057\u307e\u3059", kind="word"),
+                    TextToken(text="\u3002", kind="punctuation"),
+                ],
+            )
+        ],
+        glossary=[],
+        pronunciationHints=[],
+    )
+
+    response = build_analyze_response(vision_result=vision, text_result=text)
+
+    assert [token.pinyin for token in response.sentences[0].tokens] == ["nihongo", "wo", "benkyou", "shimasu", ""]
+    assert response.sentences[0].tokens[0].pinyin_source == "vision_hint"
+    assert response.sentences[0].tokens[3].pinyin_source == "library"
+    assert response.sentences[0].pinyin == "nihongo wo benkyou shimasu\u3002"
+
+
+def test_japanese_input_language_is_supported() -> None:
+    assert normalize_input_language("ja") == "ja"
 
 
 def test_low_confidence_and_non_matching_hints_fall_back_to_library_pinyin() -> None:

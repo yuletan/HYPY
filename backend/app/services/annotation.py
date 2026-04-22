@@ -16,13 +16,19 @@ from app.schemas.contracts import (
     TextToken,
     VisionExtractionResult,
 )
-from app.services.pinyin import ResolvedPinyin, compose_sentence_pinyin, resolve_phrase_pinyin
+from app.services.pinyin import (
+    ResolvedPinyin,
+    compose_sentence_pinyin,
+    resolve_phrase_pinyin,
+)
 
 MIN_HINT_CONFIDENCE = 0.6
 _CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+_KANA_RE = re.compile(r"[\u3040-\u30ff\uff66-\uff9f]")
+_STUDY_SCRIPT_RE = re.compile(r"[\u3040-\u30ff\uff66-\uff9f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[\u3002\uff01\uff1f!?])\s*")
 _FALLBACK_TOKEN_RE = re.compile(
-    r"[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+)*|[\u3400-\u4dbf\u4e00-\u9fff]+|[^\w\s]",
+    r"[A-Za-z0-9]+(?:\s+[A-Za-z0-9]+)*|[\u3040-\u30ff\uff66-\uff9f\u3400-\u4dbf\u4e00-\u9fff]+|[^\w\s]",
     re.UNICODE,
 )
 
@@ -65,13 +71,14 @@ def annotate_document(
             sentence=sentence,
             sentence_index=sentence_index,
             hints=combined_hints,
+            language=vision_result.language,
             glossary_index=glossary_index,
             important_context_phrases=important_context_phrases,
         )
         sentences.append(annotated_sentence)
 
     for draft in text_result.glossary:
-        resolved = resolve_phrase_pinyin(draft.text, combined_hints)
+        resolved = resolve_phrase_pinyin(draft.text, combined_hints, language=vision_result.language)
         _add_glossary_entry(
             glossary_index=glossary_index,
             draft=draft,
@@ -93,6 +100,7 @@ def annotate_sentence(
     sentence: TextSentence,
     sentence_index: int,
     hints: list[PronunciationHint],
+    language: str | None = None,
     glossary_index: dict[str, GlossaryEntry] | None = None,
     important_context_phrases: set[str] | None = None,
 ) -> AnalyzeSentence:
@@ -106,6 +114,7 @@ def annotate_sentence(
             sentence_index=sentence_index,
             token_index=token_index,
             hints=hints,
+            language=language,
         )
         resolved_tokens.append(annotated_token)
         resolved_parts.append(resolved)
@@ -133,8 +142,9 @@ def annotate_token(
     sentence_index: int,
     token_index: int,
     hints: list[PronunciationHint],
+    language: str | None = None,
 ) -> tuple[AnalyzeToken, ResolvedPinyin]:
-    resolved = resolve_phrase_pinyin(token.text, hints)
+    resolved = resolve_phrase_pinyin(token.text, hints, language=language)
     return (
         AnalyzeToken(
             id=f"s{sentence_index}-t{token_index}",
@@ -196,6 +206,7 @@ def apply_glossary_enrichment(
                         example_sentence=example_sentence,
                         glossary_hanzi=entry.hanzi,
                         glossary_pinyin=entry.pinyin,
+                        language=response.language,
                     ),
                 }
             )
@@ -269,22 +280,22 @@ def _select_sentence_inputs(
         if prepared is not None
     ]
 
-    if _contains_cjk(vision_result.document_text):
-        chinese_focused = [sentence for sentence in candidate_sentences if _is_chinese_study_sentence(sentence)]
-        if chinese_focused:
-            return chinese_focused
+    if _contains_study_script(vision_result.document_text):
+        script_focused = [sentence for sentence in candidate_sentences if _is_study_sentence(sentence)]
+        if script_focused:
+            return script_focused
 
-        fallback_chinese = [sentence for sentence in fallback_sanitized if _is_chinese_study_sentence(sentence)]
-        if fallback_chinese:
-            return fallback_chinese
+        fallback_script = [sentence for sentence in fallback_sanitized if _is_study_sentence(sentence)]
+        if fallback_script:
+            return fallback_script
 
     return candidate_sentences
 
 
-def _is_chinese_study_sentence(sentence: TextSentence) -> bool:
-    if _contains_cjk(sentence.hanzi):
+def _is_study_sentence(sentence: TextSentence) -> bool:
+    if _contains_study_script(sentence.hanzi):
         return True
-    return any(_contains_cjk(token.text) for token in sentence.tokens)
+    return any(_contains_study_script(token.text) for token in sentence.tokens)
 
 
 def _prepare_sentence_for_study(
@@ -320,7 +331,7 @@ def _should_keep_token_for_study(
         return False
     if token.kind == "punctuation":
         return True
-    if _contains_cjk(text):
+    if _contains_study_script(text):
         return True
     return any(
         phrase == text or phrase in text or text in phrase
@@ -346,7 +357,7 @@ def _sanitize_token_for_study(
     if len(split_tokens) == 1 and split_tokens[0].text == text and _is_clean_study_text(text):
         return [token]
 
-    if not _contains_cjk(text):
+    if not _contains_study_script(text):
         return []
 
     sanitized: list[TextToken] = []
@@ -358,7 +369,7 @@ def _sanitize_token_for_study(
             if _is_study_punctuation_token(split_text):
                 sanitized.append(split_token)
             continue
-        if _contains_cjk(split_text) or _is_explicit_context_phrase(split_text, important_context_phrases):
+        if _contains_study_script(split_text) or _is_explicit_context_phrase(split_text, important_context_phrases):
             sanitized.append(
                 TextToken(
                     text=split_text,
@@ -395,7 +406,7 @@ def _is_study_punctuation_token(text: str) -> bool:
 
 
 def _is_clean_study_text(text: str) -> bool:
-    return _contains_cjk(text) and not re.search(r"[A-Za-z0-9$]", text)
+    return _contains_study_script(text) and not re.search(r"[A-Za-z0-9$]", text)
 
 
 def _rebuild_sentence_text(tokens: list[TextToken]) -> str:
@@ -455,12 +466,13 @@ def _compose_example_sentence_pinyin(
     example_sentence: str | None,
     glossary_hanzi: str,
     glossary_pinyin: str,
+    language: str | None = None,
 ) -> str | None:
     if not example_sentence:
         return None
 
     if glossary_hanzi not in example_sentence:
-        return resolve_phrase_pinyin(example_sentence, []).pinyin or None
+        return resolve_phrase_pinyin(example_sentence, [], language=language).pinyin or None
 
     parts: list[ResolvedPinyin] = []
     cursor = 0
@@ -469,12 +481,12 @@ def _compose_example_sentence_pinyin(
         if next_match == -1:
             tail = example_sentence[cursor:]
             if tail:
-                parts.append(resolve_phrase_pinyin(tail, []))
+                parts.append(resolve_phrase_pinyin(tail, [], language=language))
             break
 
         before = example_sentence[cursor:next_match]
         if before:
-            parts.append(resolve_phrase_pinyin(before, []))
+            parts.append(resolve_phrase_pinyin(before, [], language=language))
         parts.append(ResolvedPinyin(text=glossary_hanzi, pinyin=glossary_pinyin, source="text_model_hint"))
         cursor = next_match + len(glossary_hanzi)
 
@@ -559,7 +571,7 @@ def _infer_token_kind(text: str) -> str:
     normalized = text.strip()
     if _is_punctuation_token(normalized):
         return "punctuation"
-    if _contains_cjk(normalized):
+    if _contains_study_script(normalized):
         return "word" if len(normalized) <= 2 else "phrase"
     return "other"
 
@@ -607,11 +619,11 @@ def _should_include_glossary_entry(
         return False
     if kind == "punctuation":
         return False
-    if not _contains_cjk(text):
+    if not _contains_study_script(text):
         return False
     if kind == "other" and not meaning:
         return False
-    if not _contains_cjk(text) and not meaning:
+    if not _contains_study_script(text) and not meaning:
         return False
     return True
 
@@ -626,5 +638,9 @@ def _contains_cjk(text: str) -> bool:
     return bool(_CJK_RE.search(text))
 
 
+def _contains_study_script(text: str) -> bool:
+    return bool(_STUDY_SCRIPT_RE.search(text))
+
+
 def _is_punctuation_token(text: str) -> bool:
-    return bool(text) and not _contains_cjk(text) and all(not char.isalnum() for char in text)
+    return bool(text) and not _contains_study_script(text) and all(not char.isalnum() for char in text)
