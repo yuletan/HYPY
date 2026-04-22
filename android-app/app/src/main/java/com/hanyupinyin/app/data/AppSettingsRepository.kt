@@ -29,6 +29,13 @@ data class AppSettings(
             "$normalizedBaseUrl/api/v1/analyze-image"
         }
 
+    val healthEndpoint: String
+        get() = if (normalizedBaseUrl.isBlank()) {
+            "/health"
+        } else {
+            "$normalizedBaseUrl/health"
+        }
+
     companion object {
         const val LEGACY_EMULATOR_BACKEND_BASE_URL = "http://10.0.2.2:8000"
     }

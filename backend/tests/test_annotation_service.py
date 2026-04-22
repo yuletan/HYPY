@@ -51,9 +51,9 @@ def test_vision_hint_overrides_polyphonic_phrase() -> None:
 
     response = build_analyze_response(vision_result=vision, text_result=text)
 
-    assert response.sentences[0].tokens[0].pinyin == "zhang3 da4"
+    assert response.sentences[0].tokens[0].pinyin == "zhǎng dà"
     assert response.sentences[0].tokens[0].pinyin_source == "vision_hint"
-    assert response.sentences[0].pinyin.startswith("zhang3 da4")
+    assert response.sentences[0].pinyin.startswith("zhǎng dà")
 
 
 def test_text_model_hint_takes_precedence_in_selection_explanation() -> None:
@@ -76,7 +76,7 @@ def test_text_model_hint_takes_precedence_in_selection_explanation() -> None:
 
     response = build_explain_response(payload=payload, explanation=result)
 
-    assert response.pinyin == "yin2 hang2 hang2 zhang3"
+    assert response.pinyin == "yín háng háng zhǎng"
     assert response.pinyin_source == "text_model_hint"
 
 
@@ -126,13 +126,13 @@ def test_low_confidence_and_non_matching_hints_fall_back_to_library_pinyin() -> 
 
 def test_compose_sentence_pinyin_attaches_punctuation_and_mixed_content() -> None:
     parts = [
-        ResolvedPinyin(text="\u91cd\u5e86", pinyin="chong2 qing4", source="library"),
+        ResolvedPinyin(text="\u91cd\u5e86", pinyin="chóng qìng", source="library"),
         ResolvedPinyin(text="\uff0c", pinyin="", source="library"),
         ResolvedPinyin(text="Python 3", pinyin="Python 3", source="library"),
         ResolvedPinyin(text="\uff01", pinyin="", source="library"),
     ]
 
-    assert compose_sentence_pinyin(parts) == "chong2 qing4\uff0c Python 3\uff01"
+    assert compose_sentence_pinyin(parts) == "chóng qìng\uff0c Python 3\uff01"
 
 
 def test_response_assembly_uses_fixture_ocr_text_when_text_model_returns_no_sentences() -> None:
@@ -208,7 +208,7 @@ def test_glossary_entries_are_deduplicated_and_prefer_readable_meaning() -> None
     glossary = {entry.hanzi: entry for entry in response.glossary}
 
     assert glossary["\u957f\u5927"].meaning == "to grow up"
-    assert glossary["\u957f\u5927"].pinyin == "zhang3 da4"
+    assert glossary["\u957f\u5927"].pinyin == "zhǎng dà"
     assert "\uff0c" not in glossary
     assert "Python 3" not in glossary
 
@@ -243,7 +243,7 @@ def test_glossary_enrichment_replaces_meaning_and_adds_example_pinyin() -> None:
 
     assert enriched.glossary[0].meaning == "signature grilled fish"
     assert enriched.glossary[0].example_sentence == "\u6211\u60f3\u70b9\u7279\u8272\u70e4\u9c7c\u3002"
-    assert enriched.glossary[0].example_sentence_pinyin == "wo3 xiang3 dian3 te4 se4 kao3 yu2\u3002"
+    assert enriched.glossary[0].example_sentence_pinyin == "wǒ xiǎng diǎn tè sè kǎo yú\u3002"
 
 
 def test_mixed_document_prefers_chinese_sentences_for_reader() -> None:

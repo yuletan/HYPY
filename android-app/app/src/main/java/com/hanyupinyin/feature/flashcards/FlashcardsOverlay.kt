@@ -14,6 +14,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,21 +55,44 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hanyupinyin.core.model.GlossaryEntry
 import com.hanyupinyin.core.model.SavedStudyItem
 import com.hanyupinyin.core.model.StudySentence
+import com.hanyupinyin.core.model.toToneMarkedPinyin
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
+private val FlashcardSavedTimeFormatter: DateTimeFormatter = DateTimeFormatter
+    .ofPattern("dd MMM, HH:mm")
+    .withZone(ZoneId.systemDefault())
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FlashcardsOverlay(
     savedStudies: List<SavedStudyItem>,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cards = remember(savedStudies) { savedStudies.toFlashcardDeck() }
+    var selectedStudyId by rememberSaveable(savedStudies.firstOrNull()?.id, savedStudies.size) {
+        mutableStateOf(savedStudies.firstOrNull()?.id)
+    }
+    val effectiveSelectedStudyId = selectedStudyId?.takeIf { selectedId ->
+        savedStudies.any { study -> study.id == selectedId }
+    }
+    val selectedStudies = remember(savedStudies, effectiveSelectedStudyId) {
+        if (effectiveSelectedStudyId == null) {
+            savedStudies
+        } else {
+            savedStudies.filter { study -> study.id == effectiveSelectedStudyId }
+        }
+    }
+    val cards = remember(selectedStudies) { selectedStudies.toFlashcardDeck() }
     val blockerInteractionSource = remember { MutableInteractionSource() }
 
     BackHandler(onBack = onClose)
@@ -94,6 +121,18 @@ fun FlashcardsOverlay(
             )
         }
 
+        if (savedStudies.isNotEmpty()) {
+            FlashcardStudyChooser(
+                savedStudies = savedStudies,
+                selectedStudyId = effectiveSelectedStudyId,
+                onSelectStudy = { selectedStudyId = it },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, top = 12.dp, end = 72.dp),
+            )
+        }
+
         if (cards.isEmpty()) {
             EmptyFlashcardsState(
                 modifier = Modifier
@@ -107,6 +146,56 @@ fun FlashcardsOverlay(
                     .align(Alignment.Center)
                     .padding(horizontal = 24.dp),
             )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlashcardStudyChooser(
+    savedStudies: List<SavedStudyItem>,
+    selectedStudyId: String?,
+    onSelectStudy: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        tonalElevation = 6.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Deck",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = selectedStudyId == null,
+                    onClick = { onSelectStudy(null) },
+                    label = { Text("All saves") },
+                )
+                savedStudies.forEachIndexed { index, study ->
+                    FilterChip(
+                        selected = selectedStudyId == study.id,
+                        onClick = { onSelectStudy(study.id) },
+                        label = {
+                            Text(
+                                text = study.deckLabel(isLatest = index == 0),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -416,7 +505,7 @@ private fun FlashcardBack(
         )
         FlashcardSection(
             title = "Han yu pin yin",
-            body = card.pinyin ?: "Pinyin not available yet.",
+            body = card.pinyin?.toToneMarkedPinyin() ?: "Pinyin not available yet.",
         )
         FlashcardSection(
             title = "Literal meaning",
@@ -425,7 +514,7 @@ private fun FlashcardBack(
         FlashcardSection(
             title = "Sentence",
             body = card.sentence ?: "Sentence not available yet.",
-            supporting = card.sentencePinyin,
+            supporting = card.sentencePinyin?.toToneMarkedPinyin(),
         )
         card.sentenceTranslation?.let { translation ->
             FlashcardSection(
@@ -511,6 +600,13 @@ private fun List<SavedStudyItem>.toFlashcardDeck(): List<FlashcardItem> {
             )
         }
     }
+}
+
+private fun SavedStudyItem.deckLabel(isLatest: Boolean): String {
+    val prefix = if (isLatest) "Latest" else FlashcardSavedTimeFormatter.format(
+        Instant.ofEpochMilli(savedAtEpochMillis),
+    )
+    return "$prefix: ${title.take(24)}"
 }
 
 private fun StudySentence.contains(entry: GlossaryEntry): Boolean {

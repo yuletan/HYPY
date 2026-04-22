@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +41,7 @@ import com.hanyupinyin.app.data.AppSettings
 import com.hanyupinyin.app.data.StudyPreferences
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun UploadRoute(
     onOpenReader: (AnalyzeImageResponse) -> Unit,
@@ -67,45 +70,40 @@ fun UploadRoute(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            ElevatedCard {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "Turn a photo into something you can actually study.",
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = "Pick a photo or screenshot and the app will reshape it into a reader, glossary, and literal meanings.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        text = "Turn a photo into something you can actually study.",
-                        style = MaterialTheme.typography.headlineSmall,
+                    PreferenceChip(label = "Live analysis")
+                    PreferenceChip(
+                        label = "Input: ${StudyPreferences.inputLanguageLabel(uiState.settings.inputLanguage)}",
                     )
-                    Text(
-                        text = "Pick a photo or screenshot and the app will reshape it into a calmer reader, a cleaner glossary, and literal meanings in your preferred language.",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        PreferenceChip(label = "Live analysis")
-                        PreferenceChip(
-                            label = "Input: ${StudyPreferences.inputLanguageLabel(uiState.settings.inputLanguage)}",
-                        )
-                        PreferenceChip(
-                            label = "Output: ${StudyPreferences.outputLanguageLabel(uiState.settings.outputLanguage)}",
-                        )
-                    }
-                    Text(
-                        text = "Live analysis uses your saved language preferences for sentence translations, token meanings, and glossary meanings.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    PreferenceChip(
+                        label = "Output: ${StudyPreferences.outputLanguageLabel(uiState.settings.outputLanguage)}",
                     )
                 }
             }
         }
 
         item {
-            ElevatedCard {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -174,31 +172,29 @@ fun UploadRoute(
             }
         }
 
-        item {
-            when (val submitState = uiState.submitState) {
-                UploadSubmitState.Empty -> StateCard(
-                    title = "Empty state",
-                    body = "No image is selected yet. Choose one to unlock the analyze action.",
-                )
+        if (uiState.submitState !is UploadSubmitState.Empty) {
+            item {
+                when (val submitState = uiState.submitState) {
+                    UploadSubmitState.Empty -> Unit
+                    UploadSubmitState.Ready -> StateCard(
+                        title = "Ready",
+                        body = "The image is selected and ready to submit.",
+                    )
 
-                UploadSubmitState.Ready -> StateCard(
-                    title = "Ready",
-                    body = "The image is selected and ready to submit.",
-                )
+                    UploadSubmitState.Loading -> LoadingStateCard()
 
-                UploadSubmitState.Loading -> LoadingStateCard()
+                    is UploadSubmitState.Error -> ErrorStateCard(
+                        message = submitState.message,
+                        canRetry = selectedImage != null,
+                        onRetry = { viewModel.analyzeImage(context.contentResolver) },
+                    )
 
-                is UploadSubmitState.Error -> ErrorStateCard(
-                    message = submitState.message,
-                    canRetry = selectedImage != null,
-                    onRetry = { viewModel.analyzeImage(context.contentResolver) },
-                )
-
-                is UploadSubmitState.Success -> SuccessStateCard(
-                    response = submitState.response,
-                    settings = uiState.settings,
-                    onOpenReader = { onOpenReader(submitState.response) },
-                )
+                    is UploadSubmitState.Success -> SuccessStateCard(
+                        response = submitState.response,
+                        settings = uiState.settings,
+                        onOpenReader = { onOpenReader(submitState.response) },
+                    )
+                }
             }
         }
     }
@@ -209,7 +205,7 @@ private fun StateCard(
     title: String,
     body: String,
 ) {
-    ElevatedCard {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -229,7 +225,7 @@ private fun StateCard(
 
 @Composable
 private fun LoadingStateCard() {
-    ElevatedCard {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -259,7 +255,7 @@ private fun ErrorStateCard(
     canRetry: Boolean,
     onRetry: () -> Unit,
 ) {
-    ElevatedCard {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -288,7 +284,7 @@ private fun SuccessStateCard(
     settings: AppSettings,
     onOpenReader: () -> Unit,
 ) {
-    ElevatedCard {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -310,7 +306,7 @@ private fun SuccessStateCard(
             if (settings.showParsedTextPreview) {
                 Text(
                     text = response.documentText.take(240).let { preview ->
-                        if (response.documentText.length > preview.length) "$preview…" else preview
+                        if (response.documentText.length > preview.length) "$preview..." else preview
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

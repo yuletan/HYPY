@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.StudySentence
 import com.hanyupinyin.core.model.StudyToken
+import com.hanyupinyin.core.model.toToneMarkedPinyin
 
 @Composable
 internal fun ReaderSummaryCard(
@@ -152,7 +153,7 @@ internal fun SentenceCard(
             )
             if (sentence.pinyin.isNotBlank()) {
                 Text(
-                    text = sentence.pinyin,
+                    text = sentence.pinyin.toToneMarkedPinyin(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -224,7 +225,7 @@ private fun TokenPinyinChip(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            text = token.pinyin,
+            text = token.pinyin.toToneMarkedPinyin(),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,

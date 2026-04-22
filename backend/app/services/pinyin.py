@@ -33,7 +33,7 @@ def resolve_phrase_pinyin(text: str, hints: list[PronunciationHint]) -> Resolved
 
     syllables = lazy_pinyin(
         normalized,
-        style=Style.TONE3,
+        style=Style.TONE,
         neutral_tone_with_five=True,
         tone_sandhi=True,
         v_to_u=True,
@@ -58,11 +58,61 @@ def compose_sentence_pinyin(parts: list[ResolvedPinyin]) -> str:
 
 def _format_hint_pinyin(hint: PronunciationHint) -> str:
     preferred = hint.tone_number_pinyin or hint.preferred_pinyin
-    return _normalize_spacing(preferred)
+    return _tone_numbers_to_marks(_normalize_spacing(preferred))
 
 
 def _normalize_spacing(value: str) -> str:
     return " ".join(value.split())
+
+
+def _tone_numbers_to_marks(value: str) -> str:
+    return re.sub(r"([A-Za-züÜvV:]+)([1-5])", _mark_tone_match, value)
+
+
+def _mark_tone_match(match: re.Match[str]) -> str:
+    syllable = match.group(1).replace("u:", "ü").replace("U:", "Ü").replace("v", "ü").replace("V", "Ü")
+    tone = int(match.group(2))
+    if tone == 5:
+        return syllable
+
+    tone_vowels = {
+        "a": "āáǎà",
+        "e": "ēéěè",
+        "i": "īíǐì",
+        "o": "ōóǒò",
+        "u": "ūúǔù",
+        "ü": "ǖǘǚǜ",
+        "A": "ĀÁǍÀ",
+        "E": "ĒÉĚÈ",
+        "I": "ĪÍǏÌ",
+        "O": "ŌÓǑÒ",
+        "U": "ŪÚǓÙ",
+        "Ü": "ǕǗǙǛ",
+    }
+    mark_index = _tone_mark_index(syllable)
+    if mark_index is None:
+        return syllable
+
+    vowel = syllable[mark_index]
+    marked_vowel = tone_vowels.get(vowel, vowel)[tone - 1]
+    return f"{syllable[:mark_index]}{marked_vowel}{syllable[mark_index + 1:]}"
+
+
+def _tone_mark_index(syllable: str) -> int | None:
+    for preferred in ("a", "A", "e", "E"):
+        index = syllable.find(preferred)
+        if index >= 0:
+            return index
+
+    lowered = syllable.lower()
+    ou_index = lowered.find("ou")
+    if ou_index >= 0:
+        return ou_index
+
+    for index in range(len(syllable) - 1, -1, -1):
+        if syllable[index] in "aeiouüAEIOUÜ":
+            return index
+    return None
 
 
 def _is_text_model_reason(reason: str | None) -> bool:

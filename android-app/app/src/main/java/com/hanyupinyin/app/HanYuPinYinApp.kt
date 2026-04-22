@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import com.hanyupinyin.app.navigation.AppDestination
 import com.hanyupinyin.app.navigation.AppNavGraph
 import com.hanyupinyin.app.data.AppSettings
 import com.hanyupinyin.app.data.AppSettingsRepository
+import com.hanyupinyin.app.data.BackendWarmupRepository
 import com.hanyupinyin.app.theme.HanYuPinYinTheme
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.StudyJson
@@ -57,6 +59,7 @@ fun HanYuPinYinApp() {
     val savedStudyRepository = remember(context) {
         SavedStudyRepository(context.applicationContext as Context)
     }
+    val backendWarmupRepository = remember { BackendWarmupRepository() }
     val appSettings by settingsRepository.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
     val savedStudies by savedStudyRepository.savedStudies.collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
@@ -69,6 +72,10 @@ fun HanYuPinYinApp() {
         latestResponseJson?.let { serialized ->
             runCatching { StudyJson.decodeFromString<AnalyzeImageResponse>(serialized) }.getOrNull()
         }
+    }
+
+    LaunchedEffect(appSettings.normalizedBaseUrl) {
+        backendWarmupRepository.warmUp(appSettings)
     }
 
     HanYuPinYinTheme(darkTheme = appSettings.useDarkTheme) {

@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hanyupinyin.core.model.GlossaryEntry
+import com.hanyupinyin.core.model.toToneMarkedPinyin
 
 data class GlossaryDetails(
     val hanzi: String,
@@ -57,7 +58,7 @@ fun GlossaryDetailsSheet(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = details.pinyin,
+                text = details.pinyin.toToneMarkedPinyin(),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -80,7 +81,7 @@ fun GlossaryDetailsSheet(
         details.exampleSentencePinyin?.takeIf { it.isNotBlank() }?.let { exampleSentencePinyin ->
             GlossarySection(
                 title = "Example pinyin",
-                body = exampleSentencePinyin,
+                body = exampleSentencePinyin.toToneMarkedPinyin(),
             )
         }
 
@@ -183,7 +184,7 @@ private fun GlossaryEntryCard(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            text = entry.pinyin,
+            text = entry.pinyin.toToneMarkedPinyin(),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
         )
