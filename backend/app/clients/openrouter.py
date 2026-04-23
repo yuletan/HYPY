@@ -285,6 +285,9 @@ class OpenRouterClient:
         except httpx.TimeoutException as exc:
             raise OpenRouterUpstreamError("Timed out while waiting for OpenRouter.") from exc
         except httpx.HTTPStatusError as exc:
+            response_text = exc.response.text.strip()
+            if response_text:
+                raise OpenRouterUpstreamError(f"OpenRouter returned an error response: {response_text}") from exc
             raise OpenRouterUpstreamError("OpenRouter returned an error response.") from exc
         except httpx.RequestError as exc:
             raise OpenRouterUpstreamError("Could not reach OpenRouter.") from exc
@@ -304,9 +307,22 @@ class OpenRouterClient:
     ) -> StructuredModelT:
         last_error: OpenRouterResponseError | None = None
         working_payload = copy.deepcopy(payload)
+        plain_text_mode = False
 
         for attempt in range(1, MAX_STRUCTURED_OUTPUT_ATTEMPTS + 1):
-            response = await self._post_chat_completion(working_payload)
+            try:
+                response = await self._post_chat_completion(working_payload)
+            except OpenRouterUpstreamError as exc:
+                if not plain_text_mode and self._is_json_mode_unsupported_error(exc):
+                    logger.info(
+                        "OpenRouter %s model=%s does not support JSON schema mode; retrying without response_format.",
+                        stage_name,
+                        model_name,
+                    )
+                    working_payload = self._build_plain_text_payload(working_payload)
+                    plain_text_mode = True
+                    continue
+                raise
             try:
                 return self._parse_structured_content(response, model_type)
             except OpenRouterResponseError as exc:
@@ -360,6 +376,18 @@ class OpenRouterClient:
         )
         retry_payload["messages"] = messages
         return retry_payload
+
+    @staticmethod
+    def _build_plain_text_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        plain_payload = copy.deepcopy(payload)
+        plain_payload.pop("response_format", None)
+        plain_payload.pop("plugins", None)
+        return plain_payload
+
+    @staticmethod
+    def _is_json_mode_unsupported_error(error: OpenRouterClientError) -> bool:
+        message = str(error).lower()
+        return "json mode is not supported" in message or "response_format" in message
 
     @staticmethod
     def _json_schema_payload(name: str, schema: dict[str, Any]) -> dict[str, Any]:

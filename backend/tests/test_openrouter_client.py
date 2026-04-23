@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.clients.openrouter import OpenRouterClient, OpenRouterResponseError
+from app.clients.openrouter import OpenRouterClient, OpenRouterResponseError, OpenRouterUpstreamError
 from app.config import Settings
 from app.schemas.contracts import GlossaryEnrichmentResult, TextAnalysisResult, VisionExtractionResult
 
@@ -72,6 +72,57 @@ async def test_request_structured_output_retries_after_invalid_response() -> Non
     assert isinstance(retry_messages, list)
     assert retry_messages[-1]["role"] == "user"
     assert "failed validation" in retry_messages[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_request_structured_output_falls_back_when_json_mode_is_unsupported() -> None:
+    client = OpenRouterClient(make_settings())
+    calls: list[dict[str, object]] = []
+    responses = iter(
+        [
+            OpenRouterUpstreamError(
+                'OpenRouter returned an error response: {"error":{"message":"Provider returned error","code":400,"metadata":{"raw":"{\\"code\\":20024,\\"message\\":\\"Json mode is not supported for this model.\\",\\"data\\":null}"}}}'
+            ),
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"sentences":[],"glossary":[],"pronunciationHints":[]}',
+                        }
+                    }
+                ]
+            },
+        ]
+    )
+
+    async def fake_post(payload: dict[str, object]) -> dict[str, object]:
+        calls.append(payload)
+        next_item = next(responses)
+        if isinstance(next_item, Exception):
+            raise next_item
+        return next_item
+
+    client._post_chat_completion = fake_post  # type: ignore[method-assign]
+
+    try:
+        result = await client._request_structured_output(
+            payload={
+                "messages": [{"role": "user", "content": "Return JSON"}],
+                "response_format": {"type": "json_schema"},
+                "plugins": [{"id": "response-healing"}],
+            },
+            model_type=TextAnalysisResult,
+            stage_name="text analysis",
+            model_name="tencent/hy3-preview:free",
+        )
+    finally:
+        await client.close()
+
+    assert result.sentences == []
+    assert len(calls) == 2
+    assert "response_format" in calls[0]
+    assert "response_format" not in calls[1]
+    assert "plugins" not in calls[1]
 
 
 def test_parse_structured_content_raises_helpful_error_for_invalid_schema() -> None:
