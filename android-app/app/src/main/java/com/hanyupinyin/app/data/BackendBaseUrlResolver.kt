@@ -2,13 +2,14 @@ package com.hanyupinyin.app.data
 
 import android.os.Build
 import com.hanyupinyin.BuildConfig
+import java.net.URI
 
 object BackendBaseUrlResolver {
     fun defaultBaseUrl(): String {
-        return if (isProbablyEmulator()) {
-            BuildConfig.EMULATOR_BACKEND_BASE_URL
-        } else {
-            BuildConfig.DEVICE_BACKEND_BASE_URL.ifBlank { BuildConfig.EMULATOR_BACKEND_BASE_URL }
+        return BuildConfig.DEVICE_BACKEND_BASE_URL.ifBlank {
+            BuildConfig.EMULATOR_BACKEND_BASE_URL.ifBlank {
+                AppSettings.PRODUCTION_BACKEND_BASE_URL
+            }
         }
     }
 
@@ -20,10 +21,23 @@ object BackendBaseUrlResolver {
 
     fun emulatorBaseUrl(): String = BuildConfig.EMULATOR_BACKEND_BASE_URL
 
-    fun shouldUpgradeLegacyEmulatorUrl(savedBaseUrl: String): Boolean {
-        return !isProbablyEmulator() &&
-            hasPhysicalDeviceBaseUrl() &&
-            savedBaseUrl == BuildConfig.EMULATOR_BACKEND_BASE_URL
+    fun shouldUseDefaultBaseUrl(savedBaseUrl: String): Boolean {
+        val normalizedBaseUrl = savedBaseUrl.trim().trimEnd('/')
+        val productionBaseUrl = AppSettings.PRODUCTION_BACKEND_BASE_URL
+
+        return normalizedBaseUrl != productionBaseUrl && isLocalDevelopmentUrl(normalizedBaseUrl)
+    }
+
+    private fun isLocalDevelopmentUrl(baseUrl: String): Boolean {
+        val host = runCatching { URI(baseUrl).host }.getOrNull()?.lowercase() ?: return false
+        val octets = host.split('.').mapNotNull { it.toIntOrNull() }
+
+        return host == "localhost" ||
+            host == "10.0.2.2" ||
+            host.startsWith("127.") ||
+            host.startsWith("10.") ||
+            host.startsWith("192.168.") ||
+            (octets.size == 4 && octets[0] == 172 && octets[1] in 16..31)
     }
 
     private fun isProbablyEmulator(): Boolean {

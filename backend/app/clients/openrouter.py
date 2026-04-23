@@ -110,7 +110,10 @@ class OpenRouterClient:
             "documentText must contain copied OCR text only: no explanations, no translation, no guesses, no analysis, no descriptions of the image.\n"
             "If a character or line is unclear, omit it or add one short warning; never invent filler.\n"
             "Never repeat a line or phrase unless it visibly appears repeated in the image.\n"
-            "Set language to zh-Hans or zh-Hant when Chinese is present, and ja when Japanese is present.\n"
+            "Detect the primary visible text language among zh-Hans, zh-Hant, ja, and en.\n"
+            "Use ja when Japanese kana are present, zh-Hans or zh-Hant when Chinese hanzi are the main study text, and en when the image is mainly English.\n"
+            "For mixed-language images, set language to the main language a learner would study from the image.\n"
+            "Preserve natural Japanese and Chinese text spacing. Do not insert spaces between kanji, kana, hanzi, or digits that form one word/number.\n"
             f"The preferred source language is {source_language_name}; use that as a hint when OCR is ambiguous.\n"
             "Return exactly one JSON object and nothing else.\n"
             "Do not include markdown fences, reasoning, commentary, or extra keys.\n"
@@ -431,22 +434,57 @@ class OpenRouterClient:
         if not isinstance(data, dict):
             return data
 
-        document_text = OpenRouterClient._first_string(
-            data.get("documentText"),
-            data.get("document_text"),
+        document_text = OpenRouterClient._normalize_cjk_ocr_spacing(
+            OpenRouterClient._first_string(
+                data.get("documentText"),
+                data.get("document_text"),
+            )
         )
-        reading_lines = OpenRouterClient._coerce_string_list(
-            data.get("readingLines"),
-            fallback=document_text.splitlines() if document_text else [],
+        reading_lines = [
+            OpenRouterClient._normalize_cjk_ocr_spacing(line)
+            for line in OpenRouterClient._coerce_string_list(
+                data.get("readingLines"),
+                fallback=document_text.splitlines() if document_text else [],
+            )
+        ]
+        pronunciation_hints = OpenRouterClient._normalize_pronunciation_hint_phrases(
+            OpenRouterClient._coerce_pronunciation_hints(data.get("pronunciationHints"))
         )
 
         return {
             "documentText": document_text,
             "language": OpenRouterClient._first_string(data.get("language")) or OpenRouterClient._infer_language(document_text),
             "readingLines": reading_lines,
-            "pronunciationHints": OpenRouterClient._coerce_pronunciation_hints(data.get("pronunciationHints")),
+            "pronunciationHints": pronunciation_hints,
             "warnings": OpenRouterClient._coerce_string_list(data.get("warnings")),
         }
+
+    @staticmethod
+    def _normalize_cjk_ocr_spacing(text: str) -> str:
+        if not text:
+            return text
+
+        cjk = r"\u3040-\u30ff\uff66-\uff9f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+        inline_space = r"[ \t\u3000]+"
+        normalized = re.sub(fr"(?<=[{cjk}]){inline_space}(?=[{cjk}])", "", text)
+        normalized = re.sub(fr"(?<=\d){inline_space}(?=\d)", "", normalized)
+        normalized = re.sub(fr"(?<=[{cjk}]){inline_space}(?=\d)", "", normalized)
+        normalized = re.sub(fr"(?<=\d){inline_space}(?=[{cjk}])", "", normalized)
+        normalized = re.sub(fr"(?<=[{cjk}\d]){inline_space}(?=[、。，．・：；！？）」』】〉》])", "", normalized)
+        normalized = re.sub(fr"(?<=[（「『【〈《〒]){inline_space}(?=[{cjk}\d])", "", normalized)
+        normalized = re.sub(fr"(?<=[、。，．・：；！？（「『【〈《]){inline_space}(?=[{cjk}\d])", "", normalized)
+        normalized = re.sub(fr"(?<=\d){inline_space}([\-~\u301c\u30fb\uff5e]){inline_space}(?=\d)", r"\1", normalized)
+        normalized = re.sub(fr"(?<=\d){inline_space}([:\uff1a]){inline_space}(?=\d)", r"\1", normalized)
+        return normalized
+
+    @staticmethod
+    def _normalize_pronunciation_hint_phrases(hints: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        normalized_hints: list[dict[str, Any]] = []
+        for hint in hints:
+            normalized = dict(hint)
+            normalized["phrase"] = OpenRouterClient._normalize_cjk_ocr_spacing(str(normalized.get("phrase", "")))
+            normalized_hints.append(normalized)
+        return normalized_hints
 
     @staticmethod
     def _validate_structured_quality(parsed: BaseModel) -> None:

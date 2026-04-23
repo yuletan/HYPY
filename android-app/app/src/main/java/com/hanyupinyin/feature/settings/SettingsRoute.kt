@@ -2,7 +2,6 @@ package com.hanyupinyin.feature.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,27 +15,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.hanyupinyin.app.data.LanguageOption
-import com.hanyupinyin.app.data.StudyPreferences
 import com.hanyupinyin.app.theme.AppCard
 import com.hanyupinyin.app.theme.SectionLabel
 import com.hanyupinyin.app.theme.appColors
@@ -86,25 +75,6 @@ fun SettingsRoute(viewModel: SettingsViewModel = viewModel()) {
                     subtitle = "Switch between light and dark",
                     checked = settings.useDarkTheme,
                     onCheckedChange = viewModel::onDarkThemeChanged,
-                )
-            }
-        }
-
-        item {
-            SettingsGroup(label = "Languages") {
-                LanguageDropdownRow(
-                    iconText = "In",
-                    title = "Input language",
-                    options = StudyPreferences.inputLanguageOptions,
-                    selectedCode = settings.inputLanguage,
-                    onSelected = viewModel::onInputLanguageChanged,
-                )
-                LanguageDropdownRow(
-                    iconText = "Out",
-                    title = "Output language",
-                    options = StudyPreferences.outputLanguageOptions,
-                    selectedCode = settings.outputLanguage,
-                    onSelected = viewModel::onOutputLanguageChanged,
                 )
             }
         }
@@ -171,71 +141,6 @@ private fun SettingsGroup(
     ) {
         SectionLabel(text = label)
         content()
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LanguageDropdownRow(
-    iconText: String,
-    title: String,
-    options: List<LanguageOption>,
-    selectedCode: String,
-    onSelected: (String) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedOption = options.firstOrNull { it.code == selectedCode } ?: options.first()
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        SettingsRow(
-            iconText = iconText,
-            title = title,
-            subtitle = selectedOption.label,
-            trailing = {
-                Text(
-                    text = ">",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.appColors.textMuted,
-                )
-            },
-            modifier = Modifier
-                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                .clickable { expanded = true },
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            containerColor = MaterialTheme.appColors.surface,
-        ) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = option.label,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.appColors.textPrimary,
-                            )
-                            Text(
-                                text = option.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.appColors.textSecondary,
-                            )
-                        }
-                    },
-                    onClick = {
-                        onSelected(option.code)
-                        expanded = false
-                    },
-                )
-            }
-        }
     }
 }
 

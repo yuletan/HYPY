@@ -1,5 +1,3 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -7,19 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
-val localProperties = Properties().apply {
-    val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
-        localPropertiesFile.inputStream().use(::load)
-    }
-}
-
 fun escapeBuildConfigString(value: String): String = value
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
-val emulatorBackendBaseUrl = "http://10.0.2.2:8000"
-val deviceBackendBaseUrl = (localProperties.getProperty("deviceBackendBaseUrl") ?: "").trim()
+val productionBackendBaseUrl = "https://hypy-production.up.railway.app"
 
 android {
     namespace = "com.hanyupinyin"
@@ -36,12 +26,12 @@ android {
         buildConfigField(
             "String",
             "EMULATOR_BACKEND_BASE_URL",
-            "\"${escapeBuildConfigString(emulatorBackendBaseUrl)}\"",
+            "\"${escapeBuildConfigString(productionBackendBaseUrl)}\"",
         )
         buildConfigField(
             "String",
             "DEVICE_BACKEND_BASE_URL",
-            "\"${escapeBuildConfigString(deviceBackendBaseUrl)}\"",
+            "\"${escapeBuildConfigString(productionBackendBaseUrl)}\"",
         )
         vectorDrawables {
             useSupportLibrary = true

@@ -37,7 +37,7 @@ data class AppSettings(
         }
 
     companion object {
-        const val LEGACY_EMULATOR_BACKEND_BASE_URL = "http://10.0.2.2:8000"
+        const val PRODUCTION_BACKEND_BASE_URL = "https://hypy-production.up.railway.app"
     }
 }
 
@@ -46,7 +46,7 @@ class AppSettingsRepository(private val context: Context) {
         val savedBaseUrl = preferences[BACKEND_BASE_URL_KEY]
         val resolvedBaseUrl = when {
             savedBaseUrl.isNullOrBlank() -> BackendBaseUrlResolver.defaultBaseUrl()
-            BackendBaseUrlResolver.shouldUpgradeLegacyEmulatorUrl(savedBaseUrl) -> {
+            BackendBaseUrlResolver.shouldUseDefaultBaseUrl(savedBaseUrl) -> {
                 BackendBaseUrlResolver.defaultBaseUrl()
             }
 

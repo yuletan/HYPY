@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hanyupinyin.app.data.AppSettings
 import com.hanyupinyin.app.data.AppSettingsRepository
-import com.hanyupinyin.app.data.StudyPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -38,20 +37,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun onDarkThemeChanged(value: Boolean) = persistUpdate { copy(useDarkTheme = value) }
-
-    fun onInputLanguageChanged(value: String) {
-        if (StudyPreferences.inputLanguageOptions.none { it.code == value }) {
-            return
-        }
-        persistUpdate { copy(inputLanguage = value) }
-    }
-
-    fun onOutputLanguageChanged(value: String) {
-        if (StudyPreferences.outputLanguageOptions.none { it.code == value }) {
-            return
-        }
-        persistUpdate { copy(outputLanguage = value) }
-    }
 
     fun onAutoOpenReaderChanged(value: Boolean) = persistUpdate { copy(autoOpenReader = value) }
 

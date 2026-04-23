@@ -112,6 +112,52 @@ def test_parse_structured_content_repairs_partial_vision_payload() -> None:
     assert result.warnings == []
 
 
+def test_parse_structured_content_repairs_spaced_japanese_ocr_text() -> None:
+    content = json.dumps(
+        {
+            "documentText": (
+                "\u6551 \u63f4 \u60c5 \u5831 \u3092\n"
+                "\u6771 \u65e5 \u672c \u5de8 \u5927 \u5730 \u9707 \u3067 \u3001 \u5927 \u304d \u306a\n"
+                "\u3012 1 0 4 - 8 2 4 3\n"
+                "\u30d5 \u30a1 \u30af \u30b9 0 3 \u30fb 5 2 0 0 \u30fb 1 8 3 6"
+            ),
+            "language": "ja",
+            "readingLines": [
+                "\u6551 \u63f4 \u60c5 \u5831 \u3092",
+                "\u6771 \u65e5 \u672c \u5de8 \u5927 \u5730 \u9707 \u3067 \u3001 \u5927 \u304d \u306a",
+                "\u3012 1 0 4 - 8 2 4 3",
+                "\u30d5 \u30a1 \u30af \u30b9 0 3 \u30fb 5 2 0 0 \u30fb 1 8 3 6",
+            ],
+            "pronunciationHints": [
+                {
+                    "phrase": "\u6771 \u65e5 \u672c \u5de8 \u5927 \u5730 \u9707",
+                    "preferredPinyin": "higashi nihon kyodai jishin",
+                    "confidence": 0.95,
+                }
+            ],
+            "warnings": [],
+        },
+        ensure_ascii=False,
+    )
+    payload = {"choices": [{"message": {"content": content}}]}
+
+    result = OpenRouterClient._parse_structured_content(payload, VisionExtractionResult)
+
+    assert result.document_text == (
+        "\u6551\u63f4\u60c5\u5831\u3092\n"
+        "\u6771\u65e5\u672c\u5de8\u5927\u5730\u9707\u3067\u3001\u5927\u304d\u306a\n"
+        "\u3012104-8243\n"
+        "\u30d5\u30a1\u30af\u30b903\u30fb5200\u30fb1836"
+    )
+    assert result.reading_lines == [
+        "\u6551\u63f4\u60c5\u5831\u3092",
+        "\u6771\u65e5\u672c\u5de8\u5927\u5730\u9707\u3067\u3001\u5927\u304d\u306a",
+        "\u3012104-8243",
+        "\u30d5\u30a1\u30af\u30b903\u30fb5200\u30fb1836",
+    ]
+    assert result.pronunciation_hints[0].phrase == "\u6771\u65e5\u672c\u5de8\u5927\u5730\u9707"
+
+
 def test_parse_structured_content_rejects_reasoning_inside_vision_text() -> None:
     content = json.dumps(
         {

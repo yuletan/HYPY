@@ -10,7 +10,7 @@ from app.clients.openrouter import (
     OpenRouterResponseError,
 )
 from app.config import Settings
-from app.schemas.contracts import AnalyzeImageResponse, ExplainSelectionRequest, ExplainSelectionResponse
+from app.schemas.contracts import AnalyzeImageResponse, ExplainSelectionRequest, ExplainSelectionResponse, TextAnalysisResult
 from app.services.language_options import normalize_input_language, normalize_output_language
 from app.services.annotation import apply_glossary_enrichment, build_analyze_response, build_explain_response
 
@@ -59,6 +59,7 @@ async def analyze_image(
             detail="Vision extraction service is currently unavailable.",
         ) from exc
 
+    text_analysis_fallback = False
     try:
         text_result = await client.analyze_text_for_study(
             document_text=vision_result.document_text,
@@ -68,18 +69,24 @@ async def analyze_image(
         )
     except OpenRouterResponseError as exc:
         logger.exception("Text analysis returned invalid structured output.")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Text analysis returned an invalid structured response.",
-        ) from exc
+        text_analysis_fallback = True
+        text_result = TextAnalysisResult(sentences=[], glossary=[], pronunciationHints=[])
     except OpenRouterClientError as exc:
         logger.exception("Text analysis request failed.")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Text analysis service is currently unavailable.",
-        ) from exc
+        text_analysis_fallback = True
+        text_result = TextAnalysisResult(sentences=[], glossary=[], pronunciationHints=[])
 
     response = build_analyze_response(vision_result=vision_result, text_result=text_result)
+    if text_analysis_fallback:
+        return response.model_copy(
+            update={
+                "warnings": [
+                    *response.warnings,
+                    "Text analysis is temporarily unavailable; showing OCR text with local pronunciation.",
+                ],
+            }
+        )
+
     if not response.glossary:
         return response
 

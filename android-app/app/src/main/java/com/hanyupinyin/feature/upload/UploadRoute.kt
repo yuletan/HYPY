@@ -11,8 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,12 +23,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.hanyupinyin.app.data.AppSettings
+import com.hanyupinyin.app.data.LanguageOption
 import com.hanyupinyin.app.data.StudyPreferences
 import com.hanyupinyin.app.theme.AppCard
 import com.hanyupinyin.app.theme.AppCjkFontFamily
@@ -56,7 +62,7 @@ import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.SavedStudyItem
 import com.hanyupinyin.feature.saved.SavedStudiesViewModel
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UploadRoute(
     onOpenReader: (AnalyzeImageResponse) -> Unit,
@@ -98,6 +104,14 @@ fun UploadRoute(
         }
 
         item {
+            LanguageControlsCard(
+                settings = uiState.settings,
+                onInputLanguageChanged = viewModel::onInputLanguageChanged,
+                onOutputLanguageChanged = viewModel::onOutputLanguageChanged,
+            )
+        }
+
+        item {
             UploadPickerCard(
                 selectedImage = selectedImage,
                 canAnalyze = uiState.canAnalyze,
@@ -105,22 +119,6 @@ fun UploadRoute(
                 onClear = viewModel::clearSelectedImage,
                 onAnalyze = { viewModel.analyzeImage(context.contentResolver) },
             )
-        }
-
-        item {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AppPill(
-                    label = "Input",
-                    value = StudyPreferences.inputLanguageLabel(uiState.settings.inputLanguage),
-                )
-                AppPill(
-                    label = "Output",
-                    value = StudyPreferences.outputLanguageLabel(uiState.settings.outputLanguage),
-                )
-            }
         }
 
         if (savedUiState.items.isNotEmpty()) {
@@ -185,6 +183,126 @@ private fun UploadHeader(settings: AppSettings) {
             label = if (settings.simulateSlowResponses) "Slow" else "Live",
             selected = true,
         )
+    }
+}
+
+@Composable
+private fun LanguageControlsCard(
+    settings: AppSettings,
+    onInputLanguageChanged: (String) -> Unit,
+    onOutputLanguageChanged: (String) -> Unit,
+) {
+    AppCard(
+        modifier = Modifier.fillMaxWidth(),
+        padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        SectionLabel(text = "Languages")
+        LanguageDropdownRow(
+            title = "Input",
+            options = StudyPreferences.inputLanguageOptions,
+            selectedCode = settings.inputLanguage,
+            onSelected = onInputLanguageChanged,
+        )
+        LanguageDropdownRow(
+            title = "Output",
+            options = StudyPreferences.outputLanguageOptions,
+            selectedCode = settings.outputLanguage,
+            onSelected = onOutputLanguageChanged,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LanguageDropdownRow(
+    title: String,
+    options: List<LanguageOption>,
+    selectedCode: String,
+    onSelected: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedOption = options.firstOrNull { it.code == selectedCode } ?: options.first()
+    val colors = MaterialTheme.appColors
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .clickable { expanded = true }
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(colors.surfaceRaised, RoundedCornerShape(9.dp))
+                    .border(1.dp, colors.border, RoundedCornerShape(9.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = title.take(2),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textSecondary,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textPrimary,
+                )
+                Text(
+                    text = selectedOption.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textSecondary,
+                )
+            }
+            Text(
+                text = ">",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textMuted,
+            )
+        }
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = colors.surface,
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = option.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.textPrimary,
+                            )
+                            Text(
+                                text = option.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textSecondary,
+                            )
+                        }
+                    },
+                    onClick = {
+                        onSelected(option.code)
+                        expanded = false
+                    },
+                )
+            }
+        }
     }
 }
 

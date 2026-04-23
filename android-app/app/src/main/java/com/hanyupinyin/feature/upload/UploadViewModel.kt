@@ -5,7 +5,9 @@ import android.content.ContentResolver
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hanyupinyin.app.data.AppSettings
 import com.hanyupinyin.app.data.AppSettingsRepository
+import com.hanyupinyin.app.data.StudyPreferences
 import java.net.ConnectException
 import java.net.MalformedURLException
 import java.net.SocketTimeoutException
@@ -68,6 +70,20 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun onInputLanguageChanged(value: String) {
+        if (StudyPreferences.inputLanguageOptions.none { it.code == value }) {
+            return
+        }
+        persistSettingsUpdate { copy(inputLanguage = value) }
+    }
+
+    fun onOutputLanguageChanged(value: String) {
+        if (StudyPreferences.outputLanguageOptions.none { it.code == value }) {
+            return
+        }
+        persistSettingsUpdate { copy(outputLanguage = value) }
+    }
+
     fun analyzeImage(contentResolver: ContentResolver) {
         val snapshot = _uiState.value
         val selectedImage = snapshot.selectedImage ?: return
@@ -116,6 +132,17 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
                         autoOpenToken = null,
                     )
                 }
+            }
+        }
+    }
+
+    private fun persistSettingsUpdate(transform: AppSettings.() -> AppSettings) {
+        val snapshot = _uiState.value.settings
+        viewModelScope.launch {
+            runCatching {
+                settingsRepository.update(snapshot.transform())
+            }.onFailure { error ->
+                Log.e(LOG_TAG, "Upload settings update failed.", error)
             }
         }
     }
