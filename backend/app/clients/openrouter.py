@@ -14,12 +14,20 @@ from app.schemas.contracts import (
     ExplainSelectionRequest,
     ExplainSelectionResult,
     GlossaryEnrichmentResult,
+    PromptDebugInfo,
     PronunciationHint,
     TextAnalysisResult,
     VisionExtractionResult,
 )
 from app.services.language_options import input_language_name, output_language_name
-from app.services.prompts import build_glossary_enrichment_messages, build_text_analysis_messages
+from app.services.prompts import (
+    GLOSSARY_ENRICHMENT_SYSTEM_PROMPT,
+    TEXT_ANALYSIS_SYSTEM_PROMPT,
+    build_glossary_enrichment_messages,
+    build_glossary_enrichment_user_prompt,
+    build_text_analysis_messages,
+    build_text_analysis_user_prompt,
+)
 
 StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 logger = logging.getLogger(__name__)
@@ -107,31 +115,7 @@ class OpenRouterClient:
         input_language: str = "auto",
     ) -> VisionExtractionResult:
         image_data_url = self._to_data_url(image_bytes=image_bytes, media_type=media_type)
-        source_language_name = input_language_name(input_language)
-        prompt = (
-            "You are an OCR engine, not a narrator.\n"
-            "Extract only visible document text from this image in reading order.\n"
-            "documentText must contain copied OCR text only: no explanations, no translation, no guesses, no analysis, no descriptions of the image.\n"
-            "If a character or line is unclear, omit it or add one short warning; never invent filler.\n"
-            "Never repeat a line or phrase unless it visibly appears repeated in the image.\n"
-            "Detect the primary visible text language among zh-Hans, zh-Hant, ja, and en.\n"
-            "Use ja when Japanese kana are present, zh-Hans or zh-Hant when Chinese hanzi are the main study text, and en when the image is mainly English.\n"
-            "For mixed-language images, set language to the main language a learner would study from the image.\n"
-            "Preserve natural Japanese and Chinese text spacing. Do not insert spaces between kanji, kana, hanzi, or digits that form one word/number.\n"
-            f"{self._source_language_instruction(input_language=input_language, source_language_name=source_language_name)}\n"
-            "Return exactly one JSON object and nothing else.\n"
-            "Do not include markdown fences, reasoning, commentary, or extra keys.\n"
-            "Do not begin with phrases like 'Okay', 'Looking at the image', or 'The user provided'.\n"
-            "Use empty arrays instead of null.\n"
-            "readingLines must be copied visible text lines, not a summary of your process.\n"
-            "pronunciationHints must stay phrase-level.\n"
-            "For Chinese, only include a pronunciation hint when a phrase has a context-sensitive reading, such as a polyphonic word, "
-            "name, or proper noun that would be easy to misread without context.\n"
-            "For Japanese, include romaji pronunciation hints for useful phrases that contain kanji. Kana-only phrases do not need hints.\n"
-            "Each hinted phrase must appear exactly in documentText.\n"
-            "Do not put pronunciation text anywhere except pronunciationHints.\n"
-            "If you are not confident, return an empty pronunciationHints array."
-        )
+        prompt = self.build_vision_prompt(input_language=input_language)
         payload = {
             "model": self._settings.openrouter_vision_model,
             "stream": False,
@@ -302,6 +286,67 @@ class OpenRouterClient:
             model_name=self._settings.openrouter_text_model,
             retry_upstream_once=True,
             retry_timeout_once=True,
+        )
+
+    def build_vision_prompt(self, input_language: str = "auto") -> str:
+        source_language_name = input_language_name(input_language)
+        return (
+            "You are an OCR engine, not a narrator.\n"
+            "Extract only visible document text from this image in reading order.\n"
+            "documentText must contain copied OCR text only: no explanations, no translation, no guesses, no analysis, no descriptions of the image.\n"
+            "If a character or line is unclear, omit it or add one short warning; never invent filler.\n"
+            "Never repeat a line or phrase unless it visibly appears repeated in the image.\n"
+            "Detect the primary visible text language among zh-Hans, zh-Hant, ja, and en.\n"
+            "Use ja when Japanese kana are present, zh-Hans or zh-Hant when Chinese hanzi are the main study text, and en when the image is mainly English.\n"
+            "For mixed-language images, set language to the main language a learner would study from the image.\n"
+            "Preserve natural Japanese and Chinese text spacing. Do not insert spaces between kanji, kana, hanzi, or digits that form one word/number.\n"
+            f"{self._source_language_instruction(input_language=input_language, source_language_name=source_language_name)}\n"
+            "Return exactly one JSON object and nothing else.\n"
+            "Do not include markdown fences, reasoning, commentary, or extra keys.\n"
+            "Do not begin with phrases like 'Okay', 'Looking at the image', or 'The user provided'.\n"
+            "Use empty arrays instead of null.\n"
+            "readingLines must be copied visible text lines, not a summary of your process.\n"
+            "pronunciationHints must stay phrase-level.\n"
+            "For Chinese, only include a pronunciation hint when a phrase has a context-sensitive reading, such as a polyphonic word, "
+            "name, or proper noun that would be easy to misread without context.\n"
+            "For Japanese, include romaji pronunciation hints for useful phrases that contain kanji. Kana-only phrases do not need hints.\n"
+            "Each hinted phrase must appear exactly in documentText.\n"
+            "Do not put pronunciation text anywhere except pronunciationHints.\n"
+            "If you are not confident, return an empty pronunciationHints array."
+        )
+
+    def build_analyze_image_debug_info(
+        self,
+        *,
+        document_text: str,
+        pronunciation_hints: list[PronunciationHint],
+        input_language: str,
+        output_language: str,
+        glossary_terms: list[str],
+        glossary_source_language: str,
+    ) -> PromptDebugInfo:
+        normalized_output_language = output_language_name(output_language)
+        normalized_input_language_name = input_language_name(input_language)
+        glossary_source_language_name = input_language_name(glossary_source_language)
+        glossary_user_prompt = None
+        if glossary_terms:
+            glossary_user_prompt = build_glossary_enrichment_user_prompt(
+                document_text=document_text,
+                glossary_terms=glossary_terms,
+                input_language_name=glossary_source_language_name,
+                output_language_name=normalized_output_language,
+            )
+        return PromptDebugInfo(
+            visionPrompt=self.build_vision_prompt(input_language=input_language),
+            textSystemPrompt=TEXT_ANALYSIS_SYSTEM_PROMPT,
+            textUserPrompt=build_text_analysis_user_prompt(
+                document_text=document_text,
+                pronunciation_hints=pronunciation_hints,
+                input_language_name=normalized_input_language_name,
+                output_language_name=normalized_output_language,
+            ),
+            glossarySystemPrompt=GLOSSARY_ENRICHMENT_SYSTEM_PROMPT if glossary_terms else None,
+            glossaryUserPrompt=glossary_user_prompt,
         )
 
     async def _post_chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:

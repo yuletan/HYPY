@@ -10,6 +10,16 @@ data class AnalyzeImageResponse(
     val sentences: List<StudySentence>,
     val glossary: List<GlossaryEntry>,
     val warnings: List<String>,
+    val debug: AnalyzeDebugInfo? = null,
+)
+
+@Serializable
+data class AnalyzeDebugInfo(
+    @SerialName("visionPrompt") val visionPrompt: String? = null,
+    @SerialName("textSystemPrompt") val textSystemPrompt: String? = null,
+    @SerialName("textUserPrompt") val textUserPrompt: String? = null,
+    @SerialName("glossarySystemPrompt") val glossarySystemPrompt: String? = null,
+    @SerialName("glossaryUserPrompt") val glossaryUserPrompt: String? = null,
 )
 
 @Serializable

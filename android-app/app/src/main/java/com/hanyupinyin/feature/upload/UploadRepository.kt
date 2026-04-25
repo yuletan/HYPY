@@ -62,6 +62,7 @@ class UploadRepository {
                 LOG_TAG,
                 "Analyze-image request succeeded sentences=${response.sentences.size} glossary=${response.glossary.size}",
             )
+            logPromptDebugInfo(response)
         }.onFailure { error ->
             Log.e(
                 LOG_TAG,
@@ -156,6 +157,31 @@ class UploadRepository {
 
     private fun DataOutputStream.writeUtf8(value: String) {
         write(value.toByteArray(Charsets.UTF_8))
+    }
+
+    private fun logPromptDebugInfo(response: AnalyzeImageResponse) {
+        val debug = response.debug ?: run {
+            Log.i(LOG_TAG, "Analyze-image response contained no debug prompt bundle.")
+            return
+        }
+
+        Log.i(
+            LOG_TAG,
+            buildString {
+                appendLine("OpenRouter prompt debug bundle follows.")
+                appendLine("=== visionPrompt ===")
+                appendLine(debug.visionPrompt.orEmpty())
+                appendLine("=== textSystemPrompt ===")
+                appendLine(debug.textSystemPrompt.orEmpty())
+                appendLine("=== textUserPrompt ===")
+                appendLine(debug.textUserPrompt.orEmpty())
+                appendLine("=== glossarySystemPrompt ===")
+                appendLine(debug.glossarySystemPrompt.orEmpty())
+                appendLine("=== glossaryUserPrompt ===")
+                appendLine(debug.glossaryUserPrompt.orEmpty())
+                append("=== endPromptDebug ===")
+            },
+        )
     }
 
     private fun DataOutputStream.writeFormField(

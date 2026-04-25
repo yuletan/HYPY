@@ -111,6 +111,16 @@ class GlossaryEntry(BaseModel):
     pinyin_source: PinyinSource = Field(alias="pinyinSource")
 
 
+class PromptDebugInfo(BaseModel):
+    model_config = ALIASED_MODEL_CONFIG
+
+    vision_prompt: str | None = Field(default=None, alias="visionPrompt")
+    text_system_prompt: str | None = Field(default=None, alias="textSystemPrompt")
+    text_user_prompt: str | None = Field(default=None, alias="textUserPrompt")
+    glossary_system_prompt: str | None = Field(default=None, alias="glossarySystemPrompt")
+    glossary_user_prompt: str | None = Field(default=None, alias="glossaryUserPrompt")
+
+
 class AnalyzeImageResponse(BaseModel):
     model_config = ALIASED_MODEL_CONFIG
 
@@ -119,6 +129,7 @@ class AnalyzeImageResponse(BaseModel):
     sentences: list[AnalyzeSentence] = Field(default_factory=list)
     glossary: list[GlossaryEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    debug: PromptDebugInfo | None = None
 
 
 class ExplainSelectionRequest(BaseModel):

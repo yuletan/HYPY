@@ -133,6 +133,15 @@ async def analyze_image(
         text_result = TextAnalysisResult(sentences=[], glossary=[], pronunciationHints=[])
 
     response = build_analyze_response(vision_result=vision_result, text_result=text_result)
+    debug_info = client.build_analyze_image_debug_info(
+        document_text=vision_result.document_text,
+        pronunciation_hints=vision_result.pronunciation_hints,
+        input_language=normalized_input_language,
+        output_language=normalized_output_language,
+        glossary_terms=[entry.hanzi for entry in response.glossary],
+        glossary_source_language=vision_result.language,
+    )
+    response = response.model_copy(update={"debug": debug_info})
     if text_analysis_fallback:
         return response.model_copy(
             update={
