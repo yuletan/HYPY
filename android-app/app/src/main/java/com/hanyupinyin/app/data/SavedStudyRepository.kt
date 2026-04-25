@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.SavedStudyItem
 import com.hanyupinyin.core.model.StudyJson
+import com.hanyupinyin.core.model.withoutDebug
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -31,7 +32,7 @@ class SavedStudyRepository(private val context: Context) {
                 id = UUID.randomUUID().toString(),
                 savedAtEpochMillis = System.currentTimeMillis(),
                 title = deriveTitle(response),
-                response = response,
+                response = response.withoutDebug(),
             )
             preferences[SAVED_STUDIES_KEY] = StudyJson.encodeToString((listOf(savedItem) + deduplicated).take(MAX_SAVED_STUDIES))
         }

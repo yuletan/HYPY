@@ -13,6 +13,14 @@ data class AnalyzeImageResponse(
     val debug: AnalyzeDebugInfo? = null,
 )
 
+fun AnalyzeImageResponse.withoutDebug(): AnalyzeImageResponse {
+    return if (debug == null) {
+        this
+    } else {
+        copy(debug = null)
+    }
+}
+
 @Serializable
 data class AnalyzeDebugInfo(
     @SerialName("visionPrompt") val visionPrompt: String? = null,

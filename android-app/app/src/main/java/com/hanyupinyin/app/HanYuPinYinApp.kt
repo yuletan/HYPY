@@ -53,6 +53,7 @@ import com.hanyupinyin.app.theme.bottomBorder
 import com.hanyupinyin.app.theme.topBorder
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.StudyJson
+import com.hanyupinyin.core.model.withoutDebug
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -174,7 +175,7 @@ fun HanYuPinYinApp() {
                         navController = navController,
                         latestResponse = latestResponse,
                         onResponseReady = { response ->
-                            latestResponseJson = StudyJson.encodeToString(response)
+                            latestResponseJson = StudyJson.encodeToString(response.withoutDebug())
                         },
                         modifier = Modifier
                             .fillMaxSize()
