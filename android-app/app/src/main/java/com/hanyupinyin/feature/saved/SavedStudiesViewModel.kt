@@ -63,6 +63,13 @@ class SavedStudiesViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             runCatching {
                 repository.delete(savedStudyId)
+            }.onSuccess {
+                _uiState.update { current ->
+                    current.copy(
+                        notice = "Deleted saved flashcards.",
+                        errorMessage = null,
+                    )
+                }
             }.onFailure { error ->
                 _uiState.update { current ->
                     current.copy(

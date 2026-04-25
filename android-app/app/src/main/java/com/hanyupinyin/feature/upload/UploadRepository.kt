@@ -6,6 +6,7 @@ import android.util.Log
 import com.hanyupinyin.app.data.AppSettings
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.StudyJson
+import com.hanyupinyin.core.model.withoutDebug
 import java.io.DataOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -47,7 +48,7 @@ class UploadRepository {
                 "connectTimeoutMs=$CONNECT_TIMEOUT_MS readTimeoutMs=$READ_TIMEOUT_MS",
         )
 
-        runCatching {
+        return@withContext runCatching {
             postAnalyzeRequest(
                 endpoint = endpoint,
                 uri = uri,
@@ -57,12 +58,13 @@ class UploadRepository {
                 inputLanguage = settings.inputLanguage,
                 outputLanguage = settings.outputLanguage,
             )
-        }.onSuccess { response ->
+        }.mapCatching { response ->
             Log.i(
                 LOG_TAG,
                 "Analyze-image request succeeded sentences=${response.sentences.size} glossary=${response.glossary.size}",
             )
             logPromptDebugInfo(response)
+            response.withoutDebug()
         }.onFailure { error ->
             Log.e(
                 LOG_TAG,

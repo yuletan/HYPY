@@ -144,6 +144,7 @@ fun FlashcardsRoute(
                         FlashcardStudyCard(
                             item = item,
                             onStart = { selectedStudyId = item.id },
+                            onDelete = { viewModel.deleteStudy(item.id) },
                         )
                     }
                 }
@@ -274,10 +275,12 @@ private fun EmptyFlashcardsPage(modifier: Modifier = Modifier) {
 private fun FlashcardStudyCard(
     item: SavedStudyItem,
     onStart: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.appColors
     val previewTerms = item.response.glossary.take(3)
+    var confirmDelete by rememberSaveable(item.id) { mutableStateOf(false) }
 
     AppCard(
         modifier = modifier.fillMaxWidth(),
@@ -370,9 +373,15 @@ private fun FlashcardStudyCard(
                 modifier = Modifier.weight(2f),
             )
             SecondaryPillButton(
-                text = "Cards",
-                onClick = onStart,
-                enabled = item.response.glossary.isNotEmpty(),
+                text = if (confirmDelete) "Tap again to delete" else "Delete deck",
+                onClick = {
+                    if (confirmDelete) {
+                        confirmDelete = false
+                        onDelete()
+                    } else {
+                        confirmDelete = true
+                    }
+                },
                 modifier = Modifier.weight(1f),
             )
         }
