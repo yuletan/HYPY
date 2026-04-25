@@ -138,6 +138,12 @@ def test_japanese_input_language_is_supported() -> None:
     assert normalize_input_language("ja") == "ja"
 
 
+def test_input_language_aliases_are_normalized() -> None:
+    assert normalize_input_language("zh-Hans") == "zh"
+    assert normalize_input_language("zh_hant") == "zh"
+    assert normalize_input_language("Japanese") == "ja"
+
+
 def test_low_confidence_and_non_matching_hints_fall_back_to_library_pinyin() -> None:
     vision = VisionExtractionResult(
         documentText="\u91cd\u5e86\u5f88\u70ed\u95f9\u3002",

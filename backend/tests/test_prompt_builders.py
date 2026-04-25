@@ -45,6 +45,7 @@ def test_glossary_enrichment_prompt_builder_returns_stable_json_messages() -> No
     messages = build_glossary_enrichment_messages(
         document_text="\u7279\u8272\u70e4\u9c7c\n1x \u738b\u8001\u5409",
         glossary_terms=["\u7279\u8272\u70e4\u9c7c", "\u738b\u8001\u5409"],
+        input_language_name="Japanese",
         output_language_name="Malay",
     )
 
@@ -55,6 +56,7 @@ def test_glossary_enrichment_prompt_builder_returns_stable_json_messages() -> No
 
     payload = json.loads(messages[1]["content"])
     assert payload["task"] == "enrich_glossary"
+    assert payload["sourceLanguage"] == "Japanese"
     assert payload["outputLanguage"] == "Malay"
     assert payload["glossaryTerms"] == ["\u7279\u8272\u70e4\u9c7c", "\u738b\u8001\u5409"]
     assert any(

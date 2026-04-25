@@ -12,6 +12,8 @@ import java.net.ConnectException
 import java.net.MalformedURLException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -93,8 +95,14 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             _uiState.update { current ->
-                current.copy(submitState = UploadSubmitState.Loading)
+                current.copy(
+                    submitState = UploadSubmitState.Loading(
+                        stage = UploadLoadingStage.AskingVisionModel,
+                        showRetryBadge = false,
+                    ),
+                )
             }
+            val loadingProgressJob = launchLoadingProgressUpdates()
 
             Log.i(
                 LOG_TAG,
@@ -110,6 +118,7 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
                     settings = snapshot.settings,
                 )
             }.onSuccess { response ->
+                loadingProgressJob.cancel()
                 Log.i(
                     LOG_TAG,
                     "Analyze image completed successfully sentences=${response.sentences.size} glossary=${response.glossary.size}",
@@ -121,6 +130,7 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
                     )
                 }
             }.onFailure { error ->
+                loadingProgressJob.cancel()
                 Log.e(
                     LOG_TAG,
                     "Analyze image failed with userMessage='${error.toUserMessage()}'",
@@ -136,11 +146,46 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun launchLoadingProgressUpdates(): Job = viewModelScope.launch {
+        delay(8_000)
+        updateLoadingState(
+            stage = UploadLoadingStage.AskingTextModel,
+            showRetryBadge = false,
+        )
+        delay(12_000)
+        updateLoadingState(
+            stage = UploadLoadingStage.AskingTextModel,
+            showRetryBadge = true,
+        )
+    }
+
+    private fun updateLoadingState(
+        stage: UploadLoadingStage,
+        showRetryBadge: Boolean,
+    ) {
+        _uiState.update { current ->
+            val loadingState = current.submitState as? UploadSubmitState.Loading ?: return@update current
+            current.copy(
+                submitState = loadingState.copy(
+                    stage = stage,
+                    showRetryBadge = showRetryBadge,
+                ),
+            )
+        }
+    }
+
     private fun persistSettingsUpdate(transform: AppSettings.() -> AppSettings) {
-        val snapshot = _uiState.value.settings
+        var updatedSettings: AppSettings? = null
+        _uiState.update { current ->
+            val nextSettings = current.settings.transform()
+            updatedSettings = nextSettings
+            current.copy(settings = nextSettings)
+        }
+
+        val snapshot = updatedSettings ?: return
         viewModelScope.launch {
             runCatching {
-                settingsRepository.update(snapshot.transform())
+                settingsRepository.update(snapshot)
             }.onFailure { error ->
                 Log.e(LOG_TAG, "Upload settings update failed.", error)
             }

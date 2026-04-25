@@ -25,7 +25,24 @@ data class UploadUiState(
 sealed interface UploadSubmitState {
     data object Empty : UploadSubmitState
     data object Ready : UploadSubmitState
-    data object Loading : UploadSubmitState
+    data class Loading(
+        val stage: UploadLoadingStage = UploadLoadingStage.AskingVisionModel,
+        val showRetryBadge: Boolean = false,
+    ) : UploadSubmitState
     data class Success(val response: AnalyzeImageResponse) : UploadSubmitState
     data class Error(val message: String) : UploadSubmitState
+}
+
+enum class UploadLoadingStage(
+    val title: String,
+    val body: String,
+) {
+    AskingVisionModel(
+        title = "Asking vision model",
+        body = "Uploading the image and extracting visible text in reading order.",
+    ),
+    AskingTextModel(
+        title = "Asking text model",
+        body = "Turning the extracted text into reader lines, glossary items, and flashcards.",
+    ),
 }

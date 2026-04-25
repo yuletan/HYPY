@@ -28,6 +28,20 @@ def get_analysis_client(request: Request) -> OpenRouterClient:
     return request.app.state.openrouter_client
 
 
+def _resolve_pipeline_language(
+    *,
+    detected_language: str,
+    input_language: str,
+) -> str:
+    if input_language == "ja":
+        return "ja"
+    if input_language == "zh":
+        return detected_language if detected_language.startswith("zh") else "zh-Hans"
+    if input_language == "en":
+        return "en"
+    return detected_language
+
+
 @router.post("/analyze-image", response_model=AnalyzeImageResponse)
 async def analyze_image(
     image: Annotated[UploadFile, File(...)],
@@ -39,6 +53,15 @@ async def analyze_image(
     normalized_input_language = normalize_input_language(input_language)
     normalized_output_language = normalize_output_language(output_language)
     image_bytes, media_type = await _read_validated_image(image=image, settings=settings)
+
+    logger.info(
+        "Starting analyze-image workflow vision_model=%s text_model=%s media_type=%s input_language=%s output_language=%s",
+        settings.openrouter_vision_model,
+        settings.openrouter_text_model,
+        media_type,
+        normalized_input_language,
+        normalized_output_language,
+    )
 
     try:
         vision_result = await client.extract_text_from_image(
@@ -59,20 +82,53 @@ async def analyze_image(
             detail="Vision extraction service is currently unavailable.",
         ) from exc
 
+    resolved_pipeline_language = _resolve_pipeline_language(
+        detected_language=vision_result.language,
+        input_language=normalized_input_language,
+    )
+    if resolved_pipeline_language != vision_result.language:
+        logger.info(
+            "Overriding detected vision language=%s with explicit input language=%s for downstream analysis.",
+            vision_result.language,
+            resolved_pipeline_language,
+        )
+        vision_result = vision_result.model_copy(update={"language": resolved_pipeline_language})
+
+    logger.info(
+        "Vision extraction completed language=%s document_length=%s pronunciation_hints=%s",
+        vision_result.language,
+        len(vision_result.document_text),
+        len(vision_result.pronunciation_hints),
+    )
+
     text_analysis_fallback = False
     try:
+        logger.info(
+            "Starting text analysis model=%s input_language=%s output_language=%s document_length=%s pronunciation_hints=%s",
+            settings.openrouter_text_model,
+            normalized_input_language,
+            normalized_output_language,
+            len(vision_result.document_text),
+            len(vision_result.pronunciation_hints),
+        )
         text_result = await client.analyze_text_for_study(
             document_text=vision_result.document_text,
             pronunciation_hints=vision_result.pronunciation_hints,
             input_language=normalized_input_language,
             output_language=normalized_output_language,
         )
+        logger.info(
+            "Text analysis completed sentences=%s glossary=%s pronunciation_hints=%s",
+            len(text_result.sentences),
+            len(text_result.glossary),
+            len(text_result.pronunciation_hints),
+        )
     except OpenRouterResponseError as exc:
-        logger.exception("Text analysis returned invalid structured output.")
+        logger.exception("Text analysis returned invalid structured output for model=%s.", settings.openrouter_text_model)
         text_analysis_fallback = True
         text_result = TextAnalysisResult(sentences=[], glossary=[], pronunciationHints=[])
     except OpenRouterClientError as exc:
-        logger.exception("Text analysis request failed.")
+        logger.exception("Text analysis request failed for model=%s.", settings.openrouter_text_model)
         text_analysis_fallback = True
         text_result = TextAnalysisResult(sentences=[], glossary=[], pronunciationHints=[])
 
@@ -91,11 +147,19 @@ async def analyze_image(
         return response
 
     try:
+        logger.info(
+            "Starting glossary enrichment source_language=%s output_language=%s terms=%s",
+            vision_result.language,
+            normalized_output_language,
+            len(response.glossary),
+        )
         glossary_enrichment = await client.enrich_glossary_terms(
             document_text=vision_result.document_text,
             glossary_terms=[entry.hanzi for entry in response.glossary],
+            source_language=vision_result.language,
             output_language=normalized_output_language,
         )
+        logger.info("Glossary enrichment completed entries=%s", len(glossary_enrichment.entries))
     except OpenRouterResponseError as exc:
         logger.exception("Glossary enrichment returned invalid structured output.")
         return response.model_copy(

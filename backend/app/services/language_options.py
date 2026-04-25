@@ -20,8 +20,19 @@ SUPPORTED_OUTPUT_LANGUAGE_NAMES = {
 
 
 def normalize_input_language(code: str | None) -> str:
-    normalized = (code or "auto").strip()
-    return normalized if normalized in SUPPORTED_INPUT_LANGUAGE_NAMES else "auto"
+    raw = (code or "auto").strip()
+    normalized = raw.lower()
+    aliases = {
+        "zh-hans": "zh",
+        "zh_hans": "zh",
+        "zh-hant": "zh",
+        "zh_hant": "zh",
+        "chinese": "zh",
+        "japanese": "ja",
+        "english": "en",
+    }
+    candidate = aliases.get(normalized, normalized)
+    return candidate if candidate in SUPPORTED_INPUT_LANGUAGE_NAMES else "auto"
 
 
 def normalize_output_language(code: str | None) -> str:

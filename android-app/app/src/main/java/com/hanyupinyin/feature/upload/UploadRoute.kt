@@ -139,7 +139,7 @@ fun UploadRoute(
                         body = "The image is selected and ready to submit.",
                     )
 
-                    UploadSubmitState.Loading -> LoadingStateCard()
+                    is UploadSubmitState.Loading -> LoadingStateCard(submitState)
 
                     is UploadSubmitState.Error -> ErrorStateCard(
                         message = submitState.message,
@@ -473,7 +473,9 @@ private fun StateCard(
 }
 
 @Composable
-private fun LoadingStateCard() {
+private fun LoadingStateCard(
+    loadingState: UploadSubmitState.Loading,
+) {
     AppCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -486,15 +488,21 @@ private fun LoadingStateCard() {
             )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "Loading",
+                    text = loadingState.stage.title,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.appColors.textPrimary,
                 )
                 Text(
-                    text = "Uploading the image and waiting for the study response.",
+                    text = loadingState.stage.body,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.appColors.textSecondary,
                 )
+                if (loadingState.showRetryBadge) {
+                    AppPill(
+                        label = "Retrying stage if needed",
+                        selected = true,
+                    )
+                }
             }
         }
     }

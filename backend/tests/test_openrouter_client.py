@@ -29,6 +29,13 @@ def test_extract_json_candidate_handles_wrapped_content() -> None:
     assert candidate == '{"sentences": [], "glossary": [], "pronunciationHints": []}'
 
 
+def test_resolve_forced_source_language_honors_explicit_selection() -> None:
+    assert OpenRouterClient._resolve_forced_source_language(input_language="ja", detected_language="zh-Hans") == "ja"
+    assert OpenRouterClient._resolve_forced_source_language(input_language="en", detected_language="zh-Hans") == "en"
+    assert OpenRouterClient._resolve_forced_source_language(input_language="zh", detected_language="ja") == "zh-Hans"
+    assert OpenRouterClient._resolve_forced_source_language(input_language="auto", detected_language="ja") == "ja"
+
+
 @pytest.mark.asyncio
 async def test_request_structured_output_retries_after_invalid_response() -> None:
     client = OpenRouterClient(make_settings())
@@ -62,6 +69,8 @@ async def test_request_structured_output_retries_after_invalid_response() -> Non
             model_type=TextAnalysisResult,
             stage_name="text analysis",
             model_name="test-text-model",
+            retry_upstream_once=False,
+            retry_timeout_once=False,
         )
     finally:
         await client.close()
@@ -114,6 +123,8 @@ async def test_request_structured_output_falls_back_when_json_mode_is_unsupporte
             model_type=TextAnalysisResult,
             stage_name="text analysis",
             model_name="tencent/hy3-preview:free",
+            retry_upstream_once=False,
+            retry_timeout_once=False,
         )
     finally:
         await client.close()
@@ -123,6 +134,147 @@ async def test_request_structured_output_falls_back_when_json_mode_is_unsupporte
     assert "response_format" in calls[0]
     assert "response_format" not in calls[1]
     assert "plugins" not in calls[1]
+
+
+@pytest.mark.asyncio
+async def test_request_structured_output_retries_text_stage_once_after_upstream_error() -> None:
+    client = OpenRouterClient(make_settings())
+    calls: list[dict[str, object]] = []
+    responses = iter(
+        [
+            OpenRouterUpstreamError("Could not reach OpenRouter."),
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"sentences":[],"glossary":[],"pronunciationHints":[]}',
+                        }
+                    }
+                ]
+            },
+        ]
+    )
+
+    async def fake_post(payload: dict[str, object]) -> dict[str, object]:
+        calls.append(payload)
+        next_item = next(responses)
+        if isinstance(next_item, Exception):
+            raise next_item
+        return next_item
+
+    client._post_chat_completion = fake_post  # type: ignore[method-assign]
+
+    try:
+        result = await client._request_structured_output(
+            payload={"messages": [{"role": "user", "content": "Return JSON"}]},
+            model_type=TextAnalysisResult,
+            stage_name="text analysis",
+            model_name="test-text-model",
+            retry_upstream_once=True,
+            retry_timeout_once=True,
+        )
+    finally:
+        await client.close()
+
+    assert result.sentences == []
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_request_structured_output_retries_when_completion_tokens_exceed_limit() -> None:
+    client = OpenRouterClient(make_settings())
+    calls: list[dict[str, object]] = []
+    responses = iter(
+        [
+            {
+                "usage": {"completion_tokens": 5001},
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"sentences":[],"glossary":[],"pronunciationHints":[]}',
+                        }
+                    }
+                ],
+            },
+            {
+                "usage": {"completion_tokens": 42},
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"sentences":[],"glossary":[],"pronunciationHints":[]}',
+                        }
+                    }
+                ],
+            },
+        ]
+    )
+
+    async def fake_post(payload: dict[str, object]) -> dict[str, object]:
+        calls.append(payload)
+        return next(responses)
+
+    client._post_chat_completion = fake_post  # type: ignore[method-assign]
+
+    try:
+        result = await client._request_structured_output(
+            payload={"messages": [{"role": "user", "content": "Return JSON"}]},
+            model_type=TextAnalysisResult,
+            stage_name="text analysis",
+            model_name="test-text-model",
+            retry_upstream_once=False,
+            retry_timeout_once=False,
+        )
+    finally:
+        await client.close()
+
+    assert result.sentences == []
+    assert len(calls) == 2
+    retry_messages = calls[1]["messages"]
+    assert isinstance(retry_messages, list)
+    assert "5000 completion tokens" in retry_messages[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_request_structured_output_retries_once_after_timeout() -> None:
+    import asyncio
+    from app.clients import openrouter as openrouter_module
+
+    client = OpenRouterClient(make_settings())
+    calls: list[dict[str, object]] = []
+
+    async def fake_post(payload: dict[str, object]) -> dict[str, object]:
+        calls.append(payload)
+        if len(calls) == 1:
+            await asyncio.sleep(0.05)
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"sentences":[],"glossary":[],"pronunciationHints":[]}',
+                    }
+                }
+            ]
+        }
+
+    client._post_chat_completion = fake_post  # type: ignore[method-assign]
+
+    original_timeout = openrouter_module.MAX_STAGE_RESPONSE_SECONDS
+    try:
+        openrouter_module.MAX_STAGE_RESPONSE_SECONDS = 0.01
+        result = await client._request_structured_output(
+            payload={"messages": [{"role": "user", "content": "Return JSON"}]},
+            model_type=TextAnalysisResult,
+            stage_name="text analysis",
+            model_name="test-text-model",
+            retry_upstream_once=False,
+            retry_timeout_once=True,
+        )
+    finally:
+        openrouter_module.MAX_STAGE_RESPONSE_SECONDS = original_timeout
+        await client.close()
+
+    assert result.sentences == []
+    assert len(calls) == 2
 
 
 def test_parse_structured_content_raises_helpful_error_for_invalid_schema() -> None:

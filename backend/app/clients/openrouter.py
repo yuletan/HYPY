@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import copy
 import json
 import logging
@@ -24,6 +25,8 @@ StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 logger = logging.getLogger(__name__)
 MAX_STRUCTURED_OUTPUT_ATTEMPTS = 3
 ERROR_PREVIEW_LIMIT = 600
+MAX_ALLOWED_COMPLETION_TOKENS = 5_000
+MAX_STAGE_RESPONSE_SECONDS = 30.0
 _OCR_REASONING_MARKERS = (
     "okay, let's",
     "let's tackle",
@@ -60,6 +63,7 @@ class StudyAnalysisClient(Protocol):
         self,
         document_text: str,
         glossary_terms: list[str],
+        source_language: str = "auto",
         output_language: str = "en",
     ) -> GlossaryEnrichmentResult: ...
 
@@ -114,7 +118,7 @@ class OpenRouterClient:
             "Use ja when Japanese kana are present, zh-Hans or zh-Hant when Chinese hanzi are the main study text, and en when the image is mainly English.\n"
             "For mixed-language images, set language to the main language a learner would study from the image.\n"
             "Preserve natural Japanese and Chinese text spacing. Do not insert spaces between kanji, kana, hanzi, or digits that form one word/number.\n"
-            f"The preferred source language is {source_language_name}; use that as a hint when OCR is ambiguous.\n"
+            f"{self._source_language_instruction(input_language=input_language, source_language_name=source_language_name)}\n"
             "Return exactly one JSON object and nothing else.\n"
             "Do not include markdown fences, reasoning, commentary, or extra keys.\n"
             "Do not begin with phrases like 'Okay', 'Looking at the image', or 'The user provided'.\n"
@@ -152,7 +156,21 @@ class OpenRouterClient:
             model_type=VisionExtractionResult,
             stage_name="vision extraction",
             model_name=self._settings.openrouter_vision_model,
+            retry_upstream_once=False,
+            retry_timeout_once=True,
         )
+        resolved_language = self._resolve_forced_source_language(
+            input_language=input_language,
+            detected_language=result.language,
+        )
+        if resolved_language != result.language:
+            logger.info(
+                "Overriding vision language from %s to %s based on explicit input language selection=%s.",
+                result.language,
+                resolved_language,
+                input_language,
+            )
+            result = result.model_copy(update={"language": resolved_language})
         return result.model_copy(
             update={
                 "pronunciation_hints": self._filter_hints(
@@ -190,6 +208,8 @@ class OpenRouterClient:
             model_type=TextAnalysisResult,
             stage_name="text analysis",
             model_name=self._settings.openrouter_text_model,
+            retry_upstream_once=True,
+            retry_timeout_once=True,
         )
         return result.model_copy(
             update={
@@ -235,6 +255,8 @@ class OpenRouterClient:
             model_type=ExplainSelectionResult,
             stage_name="selection explanation",
             model_name=self._settings.openrouter_text_model,
+            retry_upstream_once=True,
+            retry_timeout_once=True,
         )
         return result.model_copy(
             update={
@@ -250,6 +272,7 @@ class OpenRouterClient:
         self,
         document_text: str,
         glossary_terms: list[str],
+        source_language: str = "auto",
         output_language: str = "en",
     ) -> GlossaryEnrichmentResult:
         normalized_terms = [term.strip() for term in glossary_terms if term.strip()]
@@ -268,6 +291,7 @@ class OpenRouterClient:
             "messages": build_glossary_enrichment_messages(
                 document_text=document_text,
                 glossary_terms=normalized_terms,
+                input_language_name=input_language_name(source_language),
                 output_language_name=output_language_name(output_language),
             ),
         }
@@ -276,6 +300,8 @@ class OpenRouterClient:
             model_type=GlossaryEnrichmentResult,
             stage_name="glossary enrichment",
             model_name=self._settings.openrouter_text_model,
+            retry_upstream_once=True,
+            retry_timeout_once=True,
         )
 
     async def _post_chat_completion(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -304,14 +330,36 @@ class OpenRouterClient:
         model_type: type[StructuredModelT],
         stage_name: str,
         model_name: str,
+        retry_upstream_once: bool,
+        retry_timeout_once: bool,
     ) -> StructuredModelT:
         last_error: OpenRouterResponseError | None = None
         working_payload = copy.deepcopy(payload)
         plain_text_mode = False
+        upstream_retry_used = False
+        oversize_retry_used = False
+        timeout_retry_used = False
 
         for attempt in range(1, MAX_STRUCTURED_OUTPUT_ATTEMPTS + 1):
             try:
-                response = await self._post_chat_completion(working_payload)
+                response = await asyncio.wait_for(
+                    self._post_chat_completion(working_payload),
+                    timeout=MAX_STAGE_RESPONSE_SECONDS,
+                )
+            except TimeoutError as exc:
+                timeout_error = OpenRouterUpstreamError(
+                    f"Timed out after {MAX_STAGE_RESPONSE_SECONDS:.0f}s while waiting for OpenRouter."
+                )
+                if retry_timeout_once and not timeout_retry_used:
+                    timeout_retry_used = True
+                    logger.warning(
+                        "OpenRouter %s timed out on attempt %s for model=%s; retrying stage once.",
+                        stage_name,
+                        attempt,
+                        model_name,
+                    )
+                    continue
+                raise timeout_error from exc
             except OpenRouterUpstreamError as exc:
                 if not plain_text_mode and self._is_json_mode_unsupported_error(exc):
                     logger.info(
@@ -322,7 +370,41 @@ class OpenRouterClient:
                     working_payload = self._build_plain_text_payload(working_payload)
                     plain_text_mode = True
                     continue
+                if retry_upstream_once and not upstream_retry_used:
+                    upstream_retry_used = True
+                    logger.warning(
+                        "OpenRouter %s request failed on attempt %s for model=%s; retrying stage once: %s",
+                        stage_name,
+                        attempt,
+                        model_name,
+                        exc,
+                    )
+                    continue
                 raise
+            completion_tokens = self._extract_completion_tokens(response)
+            if completion_tokens is not None and completion_tokens > MAX_ALLOWED_COMPLETION_TOKENS:
+                last_error = OpenRouterResponseError(
+                    f"OpenRouter {stage_name} output exceeded {MAX_ALLOWED_COMPLETION_TOKENS} completion tokens "
+                    f"({completion_tokens}); retrying this stage."
+                )
+                logger.warning(
+                    "OpenRouter %s returned %s completion tokens on attempt %s for model=%s.",
+                    stage_name,
+                    completion_tokens,
+                    attempt,
+                    model_name,
+                )
+                if oversize_retry_used or attempt == MAX_STRUCTURED_OUTPUT_ATTEMPTS:
+                    break
+                oversize_retry_used = True
+                working_payload = self._build_retry_payload(
+                    payload=working_payload,
+                    model_type=model_type,
+                    stage_name=stage_name,
+                    error=last_error,
+                    attempt=attempt + 1,
+                )
+                continue
             try:
                 return self._parse_structured_content(response, model_type)
             except OpenRouterResponseError as exc:
@@ -383,6 +465,26 @@ class OpenRouterClient:
         plain_payload.pop("response_format", None)
         plain_payload.pop("plugins", None)
         return plain_payload
+
+    @staticmethod
+    def _extract_completion_tokens(response_payload: dict[str, Any]) -> int | None:
+        usage = response_payload.get("usage")
+        if not isinstance(usage, dict):
+            return None
+
+        for key in ("completion_tokens", "completionTokens", "output_tokens", "outputTokens"):
+            raw_value = usage.get(key)
+            if isinstance(raw_value, bool):
+                continue
+            if isinstance(raw_value, int):
+                return raw_value
+            if isinstance(raw_value, float):
+                return int(raw_value)
+            if isinstance(raw_value, str):
+                normalized = raw_value.strip()
+                if normalized.isdigit():
+                    return int(normalized)
+        return None
 
     @staticmethod
     def _is_json_mode_unsupported_error(error: OpenRouterClientError) -> bool:
@@ -493,7 +595,8 @@ class OpenRouterClient:
             return text
 
         cjk = r"\u3040-\u30ff\uff66-\uff9f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
-        inline_space = r"[ \t\u3000]+"
+        # OCR providers sometimes insert non-breaking/thin spaces between every CJK character.
+        inline_space = r"[ \t\u00a0\u1680\u2000-\u200b\u202f\u205f\u3000]+"
         normalized = re.sub(fr"(?<=[{cjk}]){inline_space}(?=[{cjk}])", "", text)
         normalized = re.sub(fr"(?<=\d){inline_space}(?=\d)", "", normalized)
         normalized = re.sub(fr"(?<=[{cjk}]){inline_space}(?=\d)", "", normalized)
@@ -607,7 +710,12 @@ class OpenRouterClient:
             glossary.append(
                 {
                     "text": text,
-                    "meaning": OpenRouterClient._first_string(raw_glossary.get("meaning")) or None,
+                    "meaning": OpenRouterClient._first_string(
+                        raw_glossary.get("meaning"),
+                        raw_glossary.get("literalMeaning"),
+                        raw_glossary.get("literal_meaning"),
+                    )
+                    or None,
                 }
             )
 
@@ -634,10 +742,15 @@ class OpenRouterClient:
                     "text": text,
                     "literalMeaning": OpenRouterClient._first_string(
                         raw_entry.get("literalMeaning"),
+                        raw_entry.get("literal_meaning"),
                         raw_entry.get("meaning"),
                     )
                     or None,
-                    "exampleSentence": OpenRouterClient._first_string(raw_entry.get("exampleSentence")) or None,
+                    "exampleSentence": OpenRouterClient._first_string(
+                        raw_entry.get("exampleSentence"),
+                        raw_entry.get("example_sentence"),
+                    )
+                    or None,
                 }
             )
 
@@ -780,6 +893,49 @@ class OpenRouterClient:
                 filtered[hint.phrase] = hint
 
         return list(filtered.values())
+
+    @staticmethod
+    def _source_language_instruction(
+        *,
+        input_language: str,
+        source_language_name: str,
+    ) -> str:
+        normalized = (input_language or "auto").strip().lower()
+        if normalized == "ja":
+            return (
+                "The source language is explicitly Japanese. "
+                "Prioritize Japanese OCR. Preserve kana, kanji, and Japanese punctuation exactly as written. "
+                "Do not convert Japanese text into Chinese variants."
+            )
+        if normalized == "zh":
+            return (
+                "The source language is explicitly Chinese. "
+                "Prioritize Chinese OCR and preserve simplified/traditional characters as shown."
+            )
+        if normalized == "en":
+            return (
+                "The source language is explicitly English. "
+                "Prioritize English OCR and avoid transliterating to Chinese or Japanese."
+            )
+        return (
+            f"The preferred source language is {source_language_name}; "
+            "use that as a hint when OCR is ambiguous."
+        )
+
+    @staticmethod
+    def _resolve_forced_source_language(
+        *,
+        input_language: str,
+        detected_language: str,
+    ) -> str:
+        normalized = (input_language or "auto").strip().lower()
+        if normalized == "ja":
+            return "ja"
+        if normalized == "zh":
+            return detected_language if detected_language.startswith("zh") else "zh-Hans"
+        if normalized == "en":
+            return "en"
+        return detected_language
 
     @staticmethod
     def _extract_json_candidate(content: str) -> str:

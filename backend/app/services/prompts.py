@@ -22,8 +22,10 @@ Rules:
 - Do not include romanization, source-language glosses, tags, IDs, timestamps, prices from other lines, or study notes inside translations.
 - If a line is already mostly English, numbers, or symbols, translation may be omitted.
 - Keep glossary terms deduplicated and readable.
+- Every glossary term should include a concise meaning in the requested output language. Omit the term if meaning is unknown.
 - For Chinese source text, only include pronunciationHints for exact phrases that genuinely need context-aware correction.
-- For Japanese source text, include pronunciationHints with romaji readings for useful terms that contain kanji, because kanji readings are context-dependent. Kana-only terms do not need hints.
+- For Japanese source text, keep Japanese script exactly as extracted and include pronunciationHints with romaji readings for kanji-containing terms, because kanji readings are context-dependent.
+- For Japanese source text, do not rewrite source text into Chinese variants.
 - Never generate Chinese pinyin or Japanese romaji inside translations or meanings.
 - If you are unsure about a pronunciation hint, omit it.
 - Return empty arrays instead of null values.
@@ -36,12 +38,14 @@ The response must match the provided schema exactly.
 Do not include reasoning, notes to self, or extra top-level keys.
 
 Rules:
-- The user prompt will specify the required output language. Follow it exactly.
+- The user prompt will specify the source language and required output language. Follow both exactly.
 - Each entry must match one requested glossary term exactly.
 - literalMeaning must be concise, literal where possible, and written in the requested output language.
+- Every returned entry must include literalMeaning. If unsure about a term, omit that term instead of returning empty meaning.
 - Do not pad meanings with study notes, grammar essays, romanization, or unrelated context.
 - exampleSentence must be a short natural source-language sentence that uses the exact glossary term.
 - Keep exampleSentence in the source language only.
+- Never rewrite Japanese source text into Chinese variants.
 - If you are unsure, keep fields short rather than verbose.
 - Return empty arrays instead of null arrays.
 """.strip()
@@ -70,6 +74,7 @@ def build_text_analysis_messages(
 def build_glossary_enrichment_messages(
     document_text: str,
     glossary_terms: list[str],
+    input_language_name: str,
     output_language_name: str,
 ) -> list[dict[str, str]]:
     return [
@@ -79,6 +84,7 @@ def build_glossary_enrichment_messages(
             "content": build_glossary_enrichment_user_prompt(
                 document_text = document_text,
                 glossary_terms = glossary_terms,
+                input_language_name = input_language_name,
                 output_language_name = output_language_name,
             ),
         },
@@ -103,7 +109,9 @@ def build_text_analysis_user_prompt(
             "Write sentence translations and token meanings in the requested output language.",
             "Use token.kind values only from: word, phrase, punctuation, other.",
             "Populate glossary with deduplicated study terms only.",
-            "For Japanese kanji terms, populate pronunciationHints with exact-match romaji readings.",
+            "Include a concise meaning for every glossary term, or omit the term if meaning is unknown.",
+            "For Japanese kanji terms, populate pronunciationHints with exact-match Hepburn-style romaji readings.",
+            "When sourceLanguage is Japanese, preserve Japanese script exactly and never convert it into Chinese variants.",
             "For Chinese terms, populate pronunciationHints only for exact-match corrections that need context.",
             "Return valid JSON matching the schema exactly.",
         ],
@@ -114,18 +122,22 @@ def build_text_analysis_user_prompt(
 def build_glossary_enrichment_user_prompt(
     document_text: str,
     glossary_terms: list[str],
+    input_language_name: str,
     output_language_name: str,
 ) -> str:
     payload = {
         "task": "enrich_glossary",
         "documentText": document_text,
+        "sourceLanguage": input_language_name,
         "outputLanguage": output_language_name,
         "glossaryTerms": glossary_terms,
         "outputChecklist": [
             "Populate entries for the requested glossary terms only.",
             "Keep each entry.text identical to the requested term.",
             "Populate literalMeaning with a concise literal meaning in the requested output language.",
-            "Populate exampleSentence with a short natural Chinese sentence using the exact term.",
+            "Every returned entry must include literalMeaning; omit terms if unsure.",
+            "Populate exampleSentence with a short natural sentence in the source language using the exact term.",
+            "If sourceLanguage is Japanese, keep Japanese script and never convert to Chinese variants.",
             "Return valid JSON matching the schema exactly.",
         ],
     }
