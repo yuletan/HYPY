@@ -38,6 +38,8 @@ def test_text_analysis_prompt_builder_returns_stable_json_messages() -> None:
     assert payload["sourceLanguage"] == "Chinese"
     assert payload["outputLanguage"] == "English"
     assert payload["existingPronunciationHints"][0]["phrase"] == "\u957f\u5927"
+    assert any("Every non-punctuation token must include meaning, or be omitted if uncertain." == item for item in payload["outputChecklist"])
+    assert any("Do not label kana-only Japanese tokens as punctuation or placeholders." == item for item in payload["outputChecklist"])
     assert any("Return valid JSON matching the schema exactly." == item for item in payload["outputChecklist"])
 
 

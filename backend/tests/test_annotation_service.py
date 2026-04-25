@@ -134,6 +134,60 @@ def test_japanese_kanji_uses_romaji_pronunciation_hint() -> None:
     assert response.sentences[0].pinyin == "nihongo wo benkyou shimasu\u3002"
 
 
+def test_japanese_kana_mislabeled_as_punctuation_is_preserved() -> None:
+    vision = VisionExtractionResult(
+        documentText="\u65e5\u672c\u8a9e\u3092\u52c9\u5f37\u3057\u307e\u3059\u3002",
+        language="ja",
+        readingLines=["\u65e5\u672c\u8a9e\u3092\u52c9\u5f37\u3057\u307e\u3059\u3002"],
+        pronunciationHints=[
+            PronunciationHint(
+                phrase="\u65e5\u672c\u8a9e",
+                preferredPinyin="nihongo",
+                reason="Japanese kanji reading",
+                confidence=0.95,
+            ),
+            PronunciationHint(
+                phrase="\u52c9\u5f37",
+                preferredPinyin="benkyou",
+                reason="Japanese kanji reading",
+                confidence=0.95,
+            ),
+        ],
+        warnings=[],
+    )
+    text = TextAnalysisResult(
+        sentences=[
+            TextSentence(
+                hanzi="\u65e5\u672c\u8a9e\u3092\u52c9\u5f37\u3057\u307e\u3059\u3002",
+                translation="I study Japanese.",
+                tokens=[
+                    TextToken(text="\u65e5\u672c\u8a9e", kind="word", meaning="Japanese language"),
+                    TextToken(text="\u3092", kind="punctuation", meaning="object marker"),
+                    TextToken(text="\u52c9\u5f37", kind="word", meaning="study"),
+                    TextToken(text="\u3057\u307e\u3059", kind="punctuation", meaning="to do"),
+                    TextToken(text="\u3002", kind="punctuation"),
+                ],
+            )
+        ],
+        glossary=[],
+        pronunciationHints=[],
+    )
+
+    response = build_analyze_response(vision_result=vision, text_result=text)
+
+    assert [token.hanzi for token in response.sentences[0].tokens] == [
+        "\u65e5\u672c\u8a9e",
+        "\u3092",
+        "\u52c9\u5f37",
+        "\u3057\u307e\u3059",
+        "\u3002",
+    ]
+    assert response.sentences[0].tokens[1].kind == "word"
+    assert response.sentences[0].tokens[1].meaning == "object marker"
+    assert response.sentences[0].tokens[3].kind == "phrase"
+    assert response.sentences[0].tokens[3].meaning == "to do"
+
+
 def test_japanese_input_language_is_supported() -> None:
     assert normalize_input_language("ja") == "ja"
 

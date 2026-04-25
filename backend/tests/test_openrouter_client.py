@@ -433,6 +433,33 @@ def test_parse_structured_content_repairs_empty_token_list_with_full_sentence_fa
     assert result.sentences[0].tokens[0].text == "测试"
 
 
+def test_parse_structured_content_repairs_token_meaning_aliases_and_kana_kind() -> None:
+    payload = {
+        "choices": [
+            {
+                "message": {
+                    "content": (
+                        '{"sentences":[{"hanzi":"\\u65e5\\u672c\\u8a9e\\u3092\\u52c9\\u5f37\\u3057\\u307e\\u3059\\u3002",'
+                        '"translation":"I study Japanese.",'
+                        '"tokens":['
+                        '{"text":"\\u65e5\\u672c\\u8a9e","kind":"word","literalMeaning":"Japanese language"},'
+                        '{"text":"\\u3092","kind":"punctuation","literal_meaning":"object marker"},'
+                        '{"text":"\\u52c9\\u5f37","kind":"word","meaning":"study"}'
+                        ']}],"glossary":[],"pronunciationHints":[]}'
+                    ),
+                }
+            }
+        ]
+    }
+
+    result = OpenRouterClient._parse_structured_content(payload, TextAnalysisResult)
+
+    assert [token.text for token in result.sentences[0].tokens] == ["日本語", "を", "勉強"]
+    assert result.sentences[0].tokens[0].meaning == "Japanese language"
+    assert result.sentences[0].tokens[1].kind == "word"
+    assert result.sentences[0].tokens[1].meaning == "object marker"
+
+
 def test_parse_structured_content_repairs_glossary_enrichment_payload() -> None:
     payload = {
         "choices": [

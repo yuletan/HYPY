@@ -15,8 +15,9 @@ Rules:
 - Split the text into study-friendly sentences.
 - Tokenize each sentence into useful words, short phrases, punctuation, or other mixed-content chunks.
 - Every non-empty sentence must include at least one token. If unsure, use one token containing the full sentence text.
-- Keep token meanings concise and learner-friendly in the requested output language.
+- Every non-punctuation token must include a concise learner-friendly meaning in the requested output language. Omit low-confidence tokens instead of leaving meaning empty.
 - Provide sentence translations when possible in the requested output language.
+- Every study sentence should include a translation in the requested output language unless the line is mostly symbols, numbers, or metadata.
 - If the source and output languages match, use a simple learner-friendly paraphrase instead of repeating the source text.
 - Keep each translation to one short sentence or phrase, ideally under 18 words.
 - Do not include romanization, source-language glosses, tags, IDs, timestamps, prices from other lines, or study notes inside translations.
@@ -26,6 +27,7 @@ Rules:
 - For Chinese source text, only include pronunciationHints for exact phrases that genuinely need context-aware correction.
 - For Japanese source text, keep Japanese script exactly as extracted and include pronunciationHints with romaji readings for kanji-containing terms, because kanji readings are context-dependent.
 - For Japanese source text, do not rewrite source text into Chinese variants.
+- For Japanese source text, kana-only tokens such as particles and okurigana are meaningful text, not punctuation or placeholders.
 - Never generate Chinese pinyin or Japanese romaji inside translations or meanings.
 - If you are unsure about a pronunciation hint, omit it.
 - Return empty arrays instead of null values.
@@ -107,11 +109,14 @@ def build_text_analysis_user_prompt(
             "Populate sentences in reading order.",
             "Populate each sentence with hanzi, translation, and tokens.",
             "Write sentence translations and token meanings in the requested output language.",
+            "Every non-punctuation token must include meaning, or be omitted if uncertain.",
+            "Every study sentence should include translation unless the line is mostly symbols or numbers.",
             "Use token.kind values only from: word, phrase, punctuation, other.",
             "Populate glossary with deduplicated study terms only.",
             "Include a concise meaning for every glossary term, or omit the term if meaning is unknown.",
             "For Japanese kanji terms, populate pronunciationHints with exact-match Hepburn-style romaji readings.",
             "When sourceLanguage is Japanese, preserve Japanese script exactly and never convert it into Chinese variants.",
+            "Do not label kana-only Japanese tokens as punctuation or placeholders.",
             "For Chinese terms, populate pronunciationHints only for exact-match corrections that need context.",
             "Return valid JSON matching the schema exactly.",
         ],

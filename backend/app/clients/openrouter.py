@@ -685,7 +685,11 @@ class OpenRouterClient:
             hanzi = OpenRouterClient._first_string(raw_sentence.get("hanzi"), raw_sentence.get("text"))
             if not hanzi:
                 continue
-            translation = OpenRouterClient._first_string(raw_sentence.get("translation"))
+            translation = OpenRouterClient._first_string(
+                raw_sentence.get("translation"),
+                raw_sentence.get("literalTranslation"),
+                raw_sentence.get("literal_translation"),
+            )
             tokens = OpenRouterClient._coerce_text_tokens(raw_sentence.get("tokens"), fallback_text=hanzi)
             sentences.append(
                 {
@@ -783,14 +787,20 @@ class OpenRouterClient:
             text = OpenRouterClient._first_string(raw_token.get("text"), raw_token.get("hanzi"))
             if not text:
                 continue
-            token_kind = OpenRouterClient._first_string(raw_token.get("kind")).lower() or "word"
-            if token_kind not in {"word", "phrase", "punctuation", "other"}:
-                token_kind = "other"
+            token_kind = OpenRouterClient._coerce_text_token_kind(
+                text=text,
+                raw_kind=OpenRouterClient._first_string(raw_token.get("kind")).lower() or "word",
+            )
             tokens.append(
                 {
                     "text": text,
                     "kind": token_kind,
-                    "meaning": OpenRouterClient._first_string(raw_token.get("meaning")) or None,
+                    "meaning": OpenRouterClient._first_string(
+                        raw_token.get("meaning"),
+                        raw_token.get("literalMeaning"),
+                        raw_token.get("literal_meaning"),
+                    )
+                    or None,
                 }
             )
 
@@ -799,6 +809,13 @@ class OpenRouterClient:
         if fallback_text.strip():
             return [{"text": fallback_text.strip(), "kind": "other"}]
         return []
+
+    @staticmethod
+    def _coerce_text_token_kind(*, text: str, raw_kind: str) -> str:
+        token_kind = raw_kind if raw_kind in {"word", "phrase", "punctuation", "other"} else "other"
+        if token_kind == "punctuation" and re.search(r"[\u3040-\u30ff\uff66-\uff9f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]", text):
+            return "word" if len(text.strip()) <= 2 else "phrase"
+        return token_kind
 
     @staticmethod
     def _coerce_pronunciation_hints(raw_hints: Any) -> list[dict[str, Any]]:

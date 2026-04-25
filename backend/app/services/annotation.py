@@ -347,15 +347,22 @@ def _sanitize_token_for_study(
     if not text:
         return []
 
-    if token.kind == "punctuation" or _is_punctuation_token(text):
-        return [token] if _is_study_punctuation_token(text) else []
+    normalized_kind = _coerce_study_token_kind(text=text, token_kind=token.kind)
+    normalized_token = token if normalized_kind == token.kind else TextToken(
+        text=text,
+        kind=normalized_kind,
+        meaning=token.meaning,
+    )
+
+    if normalized_kind == "punctuation" or _is_punctuation_token(text):
+        return [normalized_token] if _is_study_punctuation_token(text) else []
 
     if _is_explicit_context_phrase(text, important_context_phrases):
-        return [token]
+        return [normalized_token]
 
     split_tokens = _fallback_tokens(text)
     if len(split_tokens) == 1 and split_tokens[0].text == text and _is_clean_study_text(text):
-        return [token]
+        return [normalized_token]
 
     if not _contains_study_script(text):
         return []
@@ -365,20 +372,27 @@ def _sanitize_token_for_study(
         split_text = split_token.text.strip()
         if not split_text:
             continue
-        if split_token.kind == "punctuation":
+        split_kind = _coerce_study_token_kind(text=split_text, token_kind=split_token.kind)
+        if split_kind == "punctuation":
             if _is_study_punctuation_token(split_text):
-                sanitized.append(split_token)
+                sanitized.append(TextToken(text=split_text, kind=split_kind))
             continue
         if _contains_study_script(split_text) or _is_explicit_context_phrase(split_text, important_context_phrases):
             sanitized.append(
                 TextToken(
                     text=split_text,
-                    kind=split_token.kind,
+                    kind=split_kind,
                     meaning=token.meaning if split_text == text else None,
                 )
             )
 
     return sanitized
+
+
+def _coerce_study_token_kind(text: str, token_kind: str) -> str:
+    if token_kind == "punctuation" and _contains_study_script(text):
+        return _infer_token_kind(text)
+    return token_kind
 
 
 def _trim_study_tokens(tokens: list[TextToken]) -> list[TextToken]:
