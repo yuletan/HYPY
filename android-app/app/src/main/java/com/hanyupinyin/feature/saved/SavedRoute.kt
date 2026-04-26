@@ -46,7 +46,6 @@ import com.hanyupinyin.app.theme.SectionLabel
 import com.hanyupinyin.app.theme.SecondaryPillButton
 import com.hanyupinyin.app.theme.appColors
 import com.hanyupinyin.app.theme.topBorder
-import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.core.model.SavedStudyItem
 import java.time.Instant
 import java.time.ZoneId
@@ -58,7 +57,7 @@ private val SavedStudyTimeFormatter: DateTimeFormatter = DateTimeFormatter
 
 @Composable
 fun SavedRoute(
-    onOpenReader: (AnalyzeImageResponse) -> Unit,
+    onOpenReader: (String) -> Unit,
     onOpenStudy: (String?) -> Unit,
     viewModel: SavedStudiesViewModel = viewModel(),
 ) {
@@ -173,7 +172,7 @@ fun SavedRoute(
                 items(visibleItems, key = { item -> item.id }) { item ->
                     SavedStudyCard(
                         item = item,
-                        onOpenReader = { onOpenReader(item.response) },
+                        onOpenReader = { onOpenReader(item.id) },
                         onOpenStudy = { onOpenStudy(item.id) },
                         onDelete = {
                             viewModel.clearMessages()

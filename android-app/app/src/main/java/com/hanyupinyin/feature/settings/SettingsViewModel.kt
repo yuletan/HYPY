@@ -38,8 +38,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun onDarkThemeChanged(value: Boolean) = persistUpdate { copy(useDarkTheme = value) }
 
-    fun onAutoOpenReaderChanged(value: Boolean) = persistUpdate { copy(autoOpenReader = value) }
-
     fun onShowParsedTextPreviewChanged(value: Boolean) = persistUpdate { copy(showParsedTextPreview = value) }
 
     fun onSimulateSlowResponsesChanged(value: Boolean) = persistUpdate { copy(simulateSlowResponses = value) }

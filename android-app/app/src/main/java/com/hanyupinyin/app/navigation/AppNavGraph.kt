@@ -30,20 +30,31 @@ fun AppNavGraph(
             UploadRoute(
                 onOpenReader = { response ->
                     onResponseReady(response)
-                    navController.navigate(AppDestination.Reader.route) {
+                    navController.navigate(AppDestination.Reader.createRoute()) {
                         launchSingleTop = true
                     }
                 },
             )
         }
-        composable(AppDestination.Reader.route) {
-            ReaderRoute(response = latestResponse)
+        composable(
+            route = "${AppDestination.Reader.route}?studyId={studyId}",
+            arguments = listOf(
+                navArgument("studyId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { backStackEntry ->
+            ReaderRoute(
+                response = latestResponse,
+                savedStudyId = backStackEntry.arguments?.getString("studyId"),
+            )
         }
         composable(AppDestination.Saved.route) {
             SavedRoute(
-                onOpenReader = { response ->
-                    onResponseReady(response)
-                    navController.navigate(AppDestination.Reader.route) {
+                onOpenReader = { studyId ->
+                    navController.navigate(AppDestination.Reader.createRoute(studyId)) {
                         launchSingleTop = true
                     }
                 },

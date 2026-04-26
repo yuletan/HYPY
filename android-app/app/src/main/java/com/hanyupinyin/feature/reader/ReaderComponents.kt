@@ -39,6 +39,13 @@ import com.hanyupinyin.core.model.StudySentence
 import com.hanyupinyin.core.model.StudyToken
 import com.hanyupinyin.core.model.toToneMarkedPinyin
 
+private const val MAX_READER_PREVIEW_CHARS = 600
+private const val MAX_SENTENCE_DISPLAY_CHARS = 1_200
+private const val MAX_PINYIN_DISPLAY_CHARS = 1_200
+private const val MAX_TRANSLATION_DISPLAY_CHARS = 800
+private const val MAX_TOKEN_DISPLAY_CHARS = 80
+private const val MAX_RENDERED_TOKENS_PER_SENTENCE = 120
+
 @Composable
 internal fun ReaderSummaryCard(
     response: AnalyzeImageResponse,
@@ -48,8 +55,11 @@ internal fun ReaderSummaryCard(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.appColors
-    val readerPreview = response.sentences.joinToString(separator = "\n") { it.hanzi }
-        .ifBlank { response.documentText }
+    val readerPreview = response.sentences.asSequence()
+        .map { it.hanzi }
+        .filter { it.isNotBlank() }
+        .joinToStringLimited(separator = "\n", maxChars = MAX_READER_PREVIEW_CHARS)
+        .ifBlank { response.documentText.take(MAX_READER_PREVIEW_CHARS) }
 
     AppCard(
         modifier = modifier.fillMaxWidth(),
@@ -149,13 +159,13 @@ internal fun SentenceCard(
             AppPill(label = "${sentence.tokens.size} tokens")
         }
         Text(
-            text = sentence.hanzi,
+            text = sentence.hanzi.displaySnippet(MAX_SENTENCE_DISPLAY_CHARS),
             style = MaterialTheme.typography.headlineSmall.copy(fontFamily = AppCjkFontFamily),
             color = colors.textPrimary,
         )
         if (sentence.pinyin.isNotBlank()) {
             Text(
-                text = sentence.pinyin.toToneMarkedPinyin(),
+                text = sentence.pinyin.displaySnippet(MAX_PINYIN_DISPLAY_CHARS).toToneMarkedPinyin(),
                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = AppCjkFontFamily),
                 color = colors.textSecondary,
             )
@@ -164,9 +174,19 @@ internal fun SentenceCard(
             tokens = sentence.tokens,
             onTokenClick = onTokenClick,
         )
+        if (sentence.tokens.size > MAX_RENDERED_TOKENS_PER_SENTENCE) {
+            Text(
+                text = "Showing the first $MAX_RENDERED_TOKENS_PER_SENTENCE tokens.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textSecondary,
+            )
+        }
         SectionLabel(text = "Translation")
         Text(
-            text = sentence.translation?.takeIf { it.isNotBlank() } ?: "Translation unavailable.",
+            text = sentence.translation
+                ?.takeIf { it.isNotBlank() }
+                ?.displaySnippet(MAX_TRANSLATION_DISPLAY_CHARS)
+                ?: "Translation unavailable.",
             style = MaterialTheme.typography.bodyLarge,
             color = colors.textPrimary,
         )
@@ -180,18 +200,45 @@ private fun TokenFlow(
     onTokenClick: (StudyToken) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val visibleTokens = tokens.take(MAX_RENDERED_TOKENS_PER_SENTENCE)
+
     FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        tokens.forEach { token ->
+        visibleTokens.forEach { token ->
             TokenPinyinChip(
                 token = token,
                 onClick = { onTokenClick(token) },
             )
         }
     }
+}
+
+private fun Sequence<String>.joinToStringLimited(
+    separator: String,
+    maxChars: Int,
+): String {
+    val builder = StringBuilder()
+    for (value in this) {
+        var remaining = maxChars - builder.length
+        if (remaining <= 0) {
+            return builder.toString()
+        }
+        if (builder.isNotEmpty()) {
+            if (remaining <= separator.length) {
+                return builder.toString()
+            }
+            builder.append(separator)
+            remaining -= separator.length
+        }
+        builder.append(value.take(remaining))
+        if (builder.length >= maxChars) {
+            return builder.toString()
+        }
+    }
+    return builder.toString()
 }
 
 @Composable
@@ -220,7 +267,7 @@ private fun TokenPinyinChip(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            text = token.pinyin.toToneMarkedPinyin(),
+            text = token.pinyin.displaySnippet(MAX_TOKEN_DISPLAY_CHARS).toToneMarkedPinyin(),
             style = MaterialTheme.typography.labelMedium.copy(fontFamily = AppCjkFontFamily),
             color = colors.textSecondary,
             textAlign = TextAlign.Center,
@@ -228,12 +275,21 @@ private fun TokenPinyinChip(
             lineHeight = 14.sp,
         )
         Text(
-            text = token.hanzi,
+            text = token.hanzi.displaySnippet(MAX_TOKEN_DISPLAY_CHARS),
             style = MaterialTheme.typography.titleLarge.copy(fontFamily = AppCjkFontFamily),
             fontWeight = FontWeight.Bold,
             color = colors.textPrimary,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+private fun String.displaySnippet(maxChars: Int): String {
+    val normalized = trim()
+    return if (normalized.length <= maxChars) {
+        normalized
+    } else {
+        "${normalized.take(maxChars)}..."
     }
 }
 

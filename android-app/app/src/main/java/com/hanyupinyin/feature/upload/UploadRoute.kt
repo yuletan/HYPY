@@ -31,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,13 +82,6 @@ fun UploadRoute(
             displayName = context.contentResolver.displayNameFor(uri),
             mimeType = context.contentResolver.getType(uri),
         )
-    }
-    val successResponse = (uiState.submitState as? UploadSubmitState.Success)?.response
-    if (successResponse != null && uiState.settings.autoOpenReader && uiState.autoOpenToken != null) {
-        LaunchedEffect(uiState.autoOpenToken) {
-            onOpenReader(successResponse)
-            viewModel.consumeAutoOpenRequest()
-        }
     }
 
     LazyColumn(
@@ -565,12 +557,10 @@ private fun SuccessStateCard(
                 color = MaterialTheme.appColors.textSecondary,
             )
         }
-        if (!settings.autoOpenReader) {
-            PrimaryPillButton(
-                text = "Open reader",
-                onClick = onOpenReader,
-            )
-        }
+        PrimaryPillButton(
+            text = "Open reader",
+            onClick = onOpenReader,
+        )
     }
 }
 

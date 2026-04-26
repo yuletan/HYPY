@@ -37,17 +37,21 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun ReaderRoute(
     response: AnalyzeImageResponse?,
+    savedStudyId: String? = null,
     savedStudiesViewModel: SavedStudiesViewModel = viewModel(),
 ) {
     val savedUiState by savedStudiesViewModel.uiState.collectAsStateWithLifecycle()
-    var selectedDetails by remember(response?.documentText) {
+    val readerResponse = savedStudyId
+        ?.let { id -> savedUiState.items.firstOrNull { item -> item.id == id }?.response }
+        ?: response
+    var selectedDetails by remember(savedStudyId, readerResponse?.documentText) {
         mutableStateOf<GlossaryDetails?>(null)
     }
 
     val colors = MaterialTheme.appColors
 
     Scaffold(containerColor = colors.bg) { innerPadding ->
-        if (response == null || response.sentences.isEmpty()) {
+        if (readerResponse == null || readerResponse.sentences.isEmpty()) {
             ReaderEmptyState(
                 modifier = Modifier
                     .fillMaxSize()
@@ -63,18 +67,18 @@ fun ReaderRoute(
             ) {
                 item {
                     ReaderSummaryCard(
-                        response = response,
+                        response = readerResponse,
                         notice = savedUiState.notice,
                         errorMessage = savedUiState.errorMessage,
                         onSaveStudy = {
                             savedStudiesViewModel.clearMessages()
-                            savedStudiesViewModel.saveStudy(response)
+                            savedStudiesViewModel.saveStudy(readerResponse)
                         },
                     )
                 }
                 itemsIndexed(
-                    items = response.sentences,
-                    key = { _, sentence -> sentence.id },
+                    items = readerResponse.sentences,
+                    key = { index, sentence -> "${sentence.id}-$index" },
                 ) { index, sentence ->
                     SentenceCard(
                         sentence = sentence,
@@ -82,15 +86,15 @@ fun ReaderRoute(
                         onTokenClick = { token ->
                             selectedDetails = token.toGlossaryDetails(
                                 sentence = sentence,
-                                glossary = response.glossary,
+                                glossary = readerResponse.glossary,
                             )
                         },
                     )
                 }
-                if (response.glossary.isNotEmpty()) {
+                if (readerResponse.glossary.isNotEmpty()) {
                     item {
                         GlossaryPanel(
-                            entries = response.glossary,
+                            entries = readerResponse.glossary,
                             onEntryClick = { entry ->
                                 selectedDetails = entry.toGlossaryDetails()
                             },

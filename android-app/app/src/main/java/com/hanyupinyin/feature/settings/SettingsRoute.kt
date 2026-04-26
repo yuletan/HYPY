@@ -82,13 +82,6 @@ fun SettingsRoute(viewModel: SettingsViewModel = viewModel()) {
         item {
             SettingsGroup(label = "Reader & Upload") {
                 SettingToggleRow(
-                    iconText = "R",
-                    title = "Auto-open reader",
-                    subtitle = "Jump straight to reader after scan",
-                    checked = settings.autoOpenReader,
-                    onCheckedChange = viewModel::onAutoOpenReaderChanged,
-                )
-                SettingToggleRow(
                     iconText = "OCR",
                     title = "OCR preview",
                     subtitle = "Show parsed text on the upload success card",

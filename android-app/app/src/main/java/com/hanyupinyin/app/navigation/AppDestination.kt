@@ -15,7 +15,17 @@ sealed class AppDestination(
         route = "reader",
         title = "Reader",
         topLevel = false,
-    )
+    ) {
+        private const val STUDY_ID_QUERY = "studyId"
+
+        fun createRoute(studyId: String? = null): String {
+            return if (studyId.isNullOrBlank()) {
+                route
+            } else {
+                "$route?$STUDY_ID_QUERY=$studyId"
+            }
+        }
+    }
 
     data object Settings : AppDestination(
         route = "settings",

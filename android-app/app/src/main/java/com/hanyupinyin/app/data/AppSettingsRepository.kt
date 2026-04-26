@@ -16,7 +16,7 @@ data class AppSettings(
     val useDarkTheme: Boolean = true,
     val inputLanguage: String = StudyPreferences.INPUT_LANGUAGE_AUTO,
     val outputLanguage: String = StudyPreferences.OUTPUT_LANGUAGE_ENGLISH,
-    val autoOpenReader: Boolean = true,
+    val autoOpenReader: Boolean = false,
     val showParsedTextPreview: Boolean = false,
 ) {
     val normalizedBaseUrl: String
@@ -63,7 +63,7 @@ class AppSettingsRepository(private val context: Context) {
             outputLanguage = preferences[OUTPUT_LANGUAGE_KEY]
                 ?.takeIf { saved -> StudyPreferences.outputLanguageOptions.any { it.code == saved } }
                 ?: StudyPreferences.OUTPUT_LANGUAGE_ENGLISH,
-            autoOpenReader = preferences[AUTO_OPEN_READER_KEY] ?: true,
+            autoOpenReader = preferences[AUTO_OPEN_READER_KEY] ?: false,
             showParsedTextPreview = preferences[SHOW_PARSED_TEXT_PREVIEW_KEY] ?: false,
         )
     }
