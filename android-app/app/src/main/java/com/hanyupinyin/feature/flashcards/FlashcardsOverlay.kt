@@ -88,11 +88,12 @@ private val FlashcardSavedTimeFormatter: DateTimeFormatter = DateTimeFormatter
 
 @Composable
 fun FlashcardsRoute(
+    initialStudyId: String? = null,
     viewModel: SavedStudiesViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = MaterialTheme.appColors
-    var selectedStudyId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedStudyId by rememberSaveable(initialStudyId) { mutableStateOf(initialStudyId) }
     val selectedStudy = selectedStudyId?.let { id ->
         uiState.items.firstOrNull { item -> item.id == id }
     }

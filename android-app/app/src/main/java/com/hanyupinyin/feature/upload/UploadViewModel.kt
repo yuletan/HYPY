@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hanyupinyin.app.data.AppSettings
 import com.hanyupinyin.app.data.AppSettingsRepository
+import com.hanyupinyin.app.data.SavedStudyRepository
 import com.hanyupinyin.app.data.StudyPreferences
 import java.net.ConnectException
 import java.net.MalformedURLException
@@ -23,6 +24,7 @@ private const val LOG_TAG = "HanYuPinYinUpload"
 
 class UploadViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsRepository = AppSettingsRepository(application)
+    private val savedStudyRepository = SavedStudyRepository(application)
     private val uploadRepository = UploadRepository()
 
     private val _uiState = MutableStateFlow(UploadUiState())
@@ -119,6 +121,11 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }.onSuccess { response ->
                 loadingProgressJob.cancel()
+                runCatching {
+                    savedStudyRepository.save(response)
+                }.onFailure { error ->
+                    Log.e(LOG_TAG, "Auto-save after successful analysis failed.", error)
+                }
                 _uiState.update { current ->
                     current.copy(
                         submitState = UploadSubmitState.Success(response),

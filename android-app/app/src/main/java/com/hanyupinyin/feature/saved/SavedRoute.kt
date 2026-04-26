@@ -59,7 +59,7 @@ private val SavedStudyTimeFormatter: DateTimeFormatter = DateTimeFormatter
 @Composable
 fun SavedRoute(
     onOpenReader: (AnalyzeImageResponse) -> Unit,
-    onOpenStudy: () -> Unit,
+    onOpenStudy: (String?) -> Unit,
     viewModel: SavedStudiesViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -174,7 +174,7 @@ fun SavedRoute(
                     SavedStudyCard(
                         item = item,
                         onOpenReader = { onOpenReader(item.response) },
-                        onOpenStudy = onOpenStudy,
+                        onOpenStudy = { onOpenStudy(item.id) },
                         onDelete = {
                             viewModel.clearMessages()
                             viewModel.deleteStudy(item.id)

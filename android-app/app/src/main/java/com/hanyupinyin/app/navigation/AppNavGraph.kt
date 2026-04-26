@@ -2,9 +2,11 @@ package com.hanyupinyin.app.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavType
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.hanyupinyin.core.model.AnalyzeImageResponse
 import com.hanyupinyin.feature.flashcards.FlashcardsRoute
 import com.hanyupinyin.feature.reader.ReaderRoute
@@ -45,15 +47,26 @@ fun AppNavGraph(
                         launchSingleTop = true
                     }
                 },
-                onOpenStudy = {
-                    navController.navigate(AppDestination.Flashcards.route) {
+                onOpenStudy = { studyId ->
+                    navController.navigate(AppDestination.Flashcards.createRoute(studyId)) {
                         launchSingleTop = true
                     }
                 },
             )
         }
-        composable(AppDestination.Flashcards.route) {
-            FlashcardsRoute()
+        composable(
+            route = "${AppDestination.Flashcards.route}?studyId={studyId}",
+            arguments = listOf(
+                navArgument("studyId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { backStackEntry ->
+            FlashcardsRoute(
+                initialStudyId = backStackEntry.arguments?.getString("studyId"),
+            )
         }
         composable(AppDestination.Settings.route) {
             SettingsRoute()
