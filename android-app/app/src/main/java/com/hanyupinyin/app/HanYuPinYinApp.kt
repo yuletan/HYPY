@@ -33,12 +33,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,11 +50,8 @@ import com.hanyupinyin.app.theme.appColors
 import com.hanyupinyin.app.theme.bottomBorder
 import com.hanyupinyin.app.theme.topBorder
 import com.hanyupinyin.core.model.AnalyzeImageResponse
-import com.hanyupinyin.core.model.StudyJson
 import com.hanyupinyin.core.model.withoutDebug
 import kotlinx.coroutines.launch
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,12 +66,7 @@ fun HanYuPinYinApp() {
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = AppDestination.fromRoute(currentBackStackEntry?.destination?.route)
-    var latestResponseJson by rememberSaveable { mutableStateOf<String?>(null) }
-    val latestResponse = remember(latestResponseJson) {
-        latestResponseJson?.let { serialized ->
-            runCatching { StudyJson.decodeFromString<AnalyzeImageResponse>(serialized) }.getOrNull()
-        }
-    }
+    var latestResponse by remember { mutableStateOf<AnalyzeImageResponse?>(null) }
 
     LaunchedEffect(appSettings.normalizedBaseUrl) {
         backendWarmupRepository.warmUp(appSettings)
@@ -132,10 +122,7 @@ fun HanYuPinYinApp() {
                                     onClick = {
                                         navController.navigate(destination.route) {
                                             launchSingleTop = true
-                                            restoreState = true
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
-                                            }
+                                            popUpTo(AppDestination.Upload.route)
                                         }
                                     },
                                     icon = {
@@ -175,7 +162,7 @@ fun HanYuPinYinApp() {
                         navController = navController,
                         latestResponse = latestResponse,
                         onResponseReady = { response ->
-                            latestResponseJson = StudyJson.encodeToString(response.withoutDebug())
+                            latestResponse = response.withoutDebug()
                         },
                         modifier = Modifier
                             .fillMaxSize()

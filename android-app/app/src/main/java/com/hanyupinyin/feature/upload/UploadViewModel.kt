@@ -25,6 +25,7 @@ private const val LOG_TAG = "HanYuPinYinUpload"
 class UploadViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsRepository = AppSettingsRepository(application)
     private val savedStudyRepository = SavedStudyRepository(application)
+    private val analysisSleepGuard = AnalysisSleepGuard(application)
     private val uploadRepository = UploadRepository()
 
     private val _uiState = MutableStateFlow(UploadUiState())
@@ -114,11 +115,13 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
             )
 
             runCatching {
-                uploadRepository.analyzeImage(
-                    selectedImage = selectedImage,
-                    contentResolver = contentResolver,
-                    settings = snapshot.settings,
-                )
+                analysisSleepGuard.runKeepingDeviceAwake {
+                    uploadRepository.analyzeImage(
+                        selectedImage = selectedImage,
+                        contentResolver = contentResolver,
+                        settings = snapshot.settings,
+                    )
+                }
             }.onSuccess { response ->
                 loadingProgressJob.cancel()
                 runCatching {

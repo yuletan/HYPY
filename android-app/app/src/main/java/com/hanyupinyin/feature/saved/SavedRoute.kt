@@ -10,9 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,7 +41,9 @@ import com.hanyupinyin.app.theme.AppCard
 import com.hanyupinyin.app.theme.AppCjkFontFamily
 import com.hanyupinyin.app.theme.AppPill
 import com.hanyupinyin.app.theme.EmptyState
+import com.hanyupinyin.app.theme.PrimaryPillButton
 import com.hanyupinyin.app.theme.SectionLabel
+import com.hanyupinyin.app.theme.SecondaryPillButton
 import com.hanyupinyin.app.theme.appColors
 import com.hanyupinyin.app.theme.topBorder
 import com.hanyupinyin.core.model.AnalyzeImageResponse
@@ -337,49 +337,22 @@ private fun SavedStudyCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .topBorder(colors.border),
+                .topBorder(colors.border)
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            LibraryAction(
+            PrimaryPillButton(
                 text = "Open Reader",
                 onClick = onOpenReader,
                 modifier = Modifier.weight(1f),
             )
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(44.dp)
-                    .background(colors.border)
-            )
-            LibraryAction(
-                text = "Flashcards ->",
+            SecondaryPillButton(
+                text = "Flashcards",
                 onClick = onOpenStudy,
                 modifier = Modifier.weight(1f),
-                muted = true,
             )
         }
     }
-}
-
-@Composable
-private fun LibraryAction(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    muted: Boolean = false,
-) {
-    Text(
-        text = text,
-        modifier = modifier
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        style = MaterialTheme.typography.labelLarge,
-        color = if (muted) {
-            MaterialTheme.appColors.textSecondary
-        } else {
-            MaterialTheme.appColors.accentFg
-        },
-        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-    )
 }
 
 @Composable

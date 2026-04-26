@@ -1,5 +1,7 @@
 # Android
 android-app/.gradle/
+android-app/.gradle-user-home*/
+.gcheck*/
 android-app/local.properties
 android-app/**/build/
 
