@@ -47,6 +47,7 @@ class UploadRepository {
                 "inputLanguage=${settings.inputLanguage} outputLanguage=${settings.outputLanguage} " +
                 "connectTimeoutMs=$CONNECT_TIMEOUT_MS readTimeoutMs=$READ_TIMEOUT_MS",
         )
+        Log.i(LOG_TAG, "Analyze-image pipeline=vision->text->glossary")
 
         return@withContext runCatching {
             postAnalyzeRequest(
@@ -163,26 +164,17 @@ class UploadRepository {
 
     private fun logPromptDebugInfo(response: AnalyzeImageResponse) {
         val debug = response.debug ?: run {
-            Log.i(LOG_TAG, "Analyze-image response contained no debug prompt bundle.")
             return
         }
 
         Log.i(
             LOG_TAG,
-            buildString {
-                appendLine("OpenRouter prompt debug bundle follows.")
-                appendLine("=== visionPrompt ===")
-                appendLine(debug.visionPrompt.orEmpty())
-                appendLine("=== textSystemPrompt ===")
-                appendLine(debug.textSystemPrompt.orEmpty())
-                appendLine("=== textUserPrompt ===")
-                appendLine(debug.textUserPrompt.orEmpty())
-                appendLine("=== glossarySystemPrompt ===")
-                appendLine(debug.glossarySystemPrompt.orEmpty())
-                appendLine("=== glossaryUserPrompt ===")
-                appendLine(debug.glossaryUserPrompt.orEmpty())
-                append("=== endPromptDebug ===")
-            },
+            "Analyze-image response included debug prompt bundle " +
+                "vision=${debug.visionPrompt?.length ?: 0} chars " +
+                "textSystem=${debug.textSystemPrompt?.length ?: 0} chars " +
+                "textUser=${debug.textUserPrompt?.length ?: 0} chars " +
+                "glossarySystem=${debug.glossarySystemPrompt?.length ?: 0} chars " +
+                "glossaryUser=${debug.glossaryUserPrompt?.length ?: 0} chars",
         )
     }
 
