@@ -94,34 +94,13 @@ async def analyze_image(
         )
         vision_result = vision_result.model_copy(update={"language": resolved_pipeline_language})
 
-    logger.info(
-        "Vision extraction completed language=%s document_length=%s pronunciation_hints=%s",
-        vision_result.language,
-        len(vision_result.document_text),
-        len(vision_result.pronunciation_hints),
-    )
-
     text_analysis_fallback = False
     try:
-        logger.info(
-            "Starting text analysis model=%s input_language=%s output_language=%s document_length=%s pronunciation_hints=%s",
-            settings.openrouter_text_model,
-            normalized_input_language,
-            normalized_output_language,
-            len(vision_result.document_text),
-            len(vision_result.pronunciation_hints),
-        )
         text_result = await client.analyze_text_for_study(
             document_text=vision_result.document_text,
             pronunciation_hints=vision_result.pronunciation_hints,
             input_language=normalized_input_language,
             output_language=normalized_output_language,
-        )
-        logger.info(
-            "Text analysis completed sentences=%s glossary=%s pronunciation_hints=%s",
-            len(text_result.sentences),
-            len(text_result.glossary),
-            len(text_result.pronunciation_hints),
         )
     except OpenRouterResponseError as exc:
         logger.exception("Text analysis returned invalid structured output for model=%s.", settings.openrouter_text_model)
@@ -133,15 +112,6 @@ async def analyze_image(
         text_result = TextAnalysisResult(sentences=[], glossary=[], pronunciationHints=[])
 
     response = build_analyze_response(vision_result=vision_result, text_result=text_result)
-    debug_info = client.build_analyze_image_debug_info(
-        document_text=vision_result.document_text,
-        pronunciation_hints=vision_result.pronunciation_hints,
-        input_language=normalized_input_language,
-        output_language=normalized_output_language,
-        glossary_terms=[entry.hanzi for entry in response.glossary],
-        glossary_source_language=vision_result.language,
-    )
-    response = response.model_copy(update={"debug": debug_info})
     if text_analysis_fallback:
         return response.model_copy(
             update={
@@ -156,19 +126,12 @@ async def analyze_image(
         return response
 
     try:
-        logger.info(
-            "Starting glossary enrichment source_language=%s output_language=%s terms=%s",
-            vision_result.language,
-            normalized_output_language,
-            len(response.glossary),
-        )
         glossary_enrichment = await client.enrich_glossary_terms(
             document_text=vision_result.document_text,
             glossary_terms=[entry.hanzi for entry in response.glossary],
             source_language=vision_result.language,
             output_language=normalized_output_language,
         )
-        logger.info("Glossary enrichment completed entries=%s", len(glossary_enrichment.entries))
     except OpenRouterResponseError as exc:
         logger.exception("Glossary enrichment returned invalid structured output.")
         return response.model_copy(

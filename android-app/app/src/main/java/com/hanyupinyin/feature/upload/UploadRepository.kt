@@ -59,12 +59,7 @@ class UploadRepository {
                 inputLanguage = settings.inputLanguage,
                 outputLanguage = settings.outputLanguage,
             )
-        }.mapCatching { response ->
-            Log.i(
-                LOG_TAG,
-                "Analyze-image request succeeded sentences=${response.sentences.size} glossary=${response.glossary.size}",
-            )
-            logPromptDebugInfo(response)
+        }.map { response ->
             response.withoutDebug()
         }.onFailure { error ->
             Log.e(
@@ -160,22 +155,6 @@ class UploadRepository {
 
     private fun DataOutputStream.writeUtf8(value: String) {
         write(value.toByteArray(Charsets.UTF_8))
-    }
-
-    private fun logPromptDebugInfo(response: AnalyzeImageResponse) {
-        val debug = response.debug ?: run {
-            return
-        }
-
-        Log.i(
-            LOG_TAG,
-            "Analyze-image response included debug prompt bundle " +
-                "vision=${debug.visionPrompt?.length ?: 0} chars " +
-                "textSystem=${debug.textSystemPrompt?.length ?: 0} chars " +
-                "textUser=${debug.textUserPrompt?.length ?: 0} chars " +
-                "glossarySystem=${debug.glossarySystemPrompt?.length ?: 0} chars " +
-                "glossaryUser=${debug.glossaryUserPrompt?.length ?: 0} chars",
-        )
     }
 
     private fun DataOutputStream.writeFormField(

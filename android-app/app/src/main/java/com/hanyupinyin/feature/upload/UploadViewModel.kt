@@ -119,10 +119,6 @@ class UploadViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }.onSuccess { response ->
                 loadingProgressJob.cancel()
-                Log.i(
-                    LOG_TAG,
-                    "Analyze image completed successfully sentences=${response.sentences.size} glossary=${response.glossary.size}",
-                )
                 _uiState.update { current ->
                     current.copy(
                         submitState = UploadSubmitState.Success(response),
